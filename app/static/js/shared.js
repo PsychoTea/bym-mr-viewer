@@ -232,6 +232,33 @@ export function buildBymUrl(path, query = null, config = getViewerConfig()) {
 }
 
 export function buildSessionPayload(loginResponse, map) {
+  const mapPayload = map && typeof map === "object" ? map : {};
+  const loginWorldId =
+    loginResponse?.worldid ||
+    loginResponse?.worldId ||
+    loginResponse?.wid ||
+    loginResponse?.save?.worldid ||
+    loginResponse?.save?.worldId ||
+    loginResponse?.save?.wid ||
+    loginResponse?.user?.save?.worldid ||
+    loginResponse?.user?.save?.worldId ||
+    loginResponse?.user?.save?.wid ||
+    loginResponse?.map?.worldid ||
+    loginResponse?.map?.worldId ||
+    loginResponse?.map?.wid ||
+    "";
+  const loginWorldName =
+    loginResponse?.worldname ||
+    loginResponse?.worldName ||
+    loginResponse?.save?.worldname ||
+    loginResponse?.save?.worldName ||
+    loginResponse?.user?.save?.worldname ||
+    loginResponse?.user?.save?.worldName ||
+    loginResponse?.world?.name ||
+    loginResponse?.map?.worldname ||
+    loginResponse?.map?.worldName ||
+    "";
+
   return {
     token: loginResponse?.token || "",
     user: {
@@ -240,7 +267,11 @@ export function buildSessionPayload(loginResponse, map) {
       email: loginResponse?.email || "",
       pic_square: loginResponse?.pic_square || "",
     },
-    map: map || {},
+    map: {
+      ...mapPayload,
+      worldid: mapPayload.worldid || mapPayload.worldId || mapPayload.wid || loginWorldId || "",
+      worldName: mapPayload.worldName || mapPayload.worldname || loginWorldName || "",
+    },
   };
 }
 

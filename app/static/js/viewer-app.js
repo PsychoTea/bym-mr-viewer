@@ -459,6 +459,9 @@ export class ViewerApp {
 
     this.selectedWorldId = this.worlds[0]?.uuid || null;
     this.renderWorldList();
+    if (this.session) {
+      this.updateSessionWorld(this.session);
+    }
 
     if (this.selectedWorldId) {
       await this.loadLeaderboard(this.selectedWorldId);
@@ -1123,8 +1126,18 @@ export class ViewerApp {
       session?.map?.wid ||
       "",
     );
-    const world = this.worlds.find((candidate) => String(candidate.uuid) === worldId) || null;
-    const worldLabel = world?.name || (worldId ? `World ${worldId}` : "");
+    const directWorldName = String(
+      session?.map?.worldName ||
+      session?.map?.worldname ||
+      "",
+    ).trim();
+    const world =
+      this.worlds.find(
+        (candidate) =>
+          String(candidate.uuid || "") === worldId ||
+          String(candidate.worldid || "") === worldId,
+      ) || null;
+    const worldLabel = directWorldName || world?.name || (worldId ? `World ${worldId}` : "");
     this.elements.sessionWorld.hidden = !worldLabel;
     this.elements.sessionWorld.textContent = worldLabel;
   }
