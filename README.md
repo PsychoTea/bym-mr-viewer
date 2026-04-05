@@ -38,3 +38,14 @@ When the BYM demo server is running on the host machine at `localhost:3001`:
 
 - the Python container talks to the API through `http://host.docker.internal:3001`
 - the browser fetches CDN assets from `http://localhost:3001`
+
+## TODO:
+
+- Add refresh button to re-fetch data from live server
+- Make left pane collapsible after logged in
+- Add tooltips when hovering over refresh / home / zoom out / zoom in buttons
+- Get rid of python backend and make it all in-browser
+- Refactor JS code into multiple files 
+- Add server selector so you can change between main server, local server, or custom server with IP + port
+    - This setting should be saved 
+- Update README and add documentation

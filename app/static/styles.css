@@ -48,7 +48,6 @@ body {
   padding: 18px 18px 18px 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
   min-width: 0;
 }
 
@@ -65,13 +64,6 @@ body {
 .details-panel,
 .sidebar .panel {
   padding: 16px;
-}
-
-.map-toolbar {
-  padding: 16px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .map-panel {
@@ -92,13 +84,28 @@ body {
 
 .map-overlay {
   position: absolute;
-  inset: auto 18px 18px 18px;
+  inset: auto auto 72px 18px;
   padding: 12px 14px;
   border-radius: 12px;
   background: rgba(14, 12, 10, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--muted);
-  max-width: 520px;
+  max-width: min(520px, calc(100% - 36px));
+  z-index: 2;
+}
+
+.map-coordinates {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(14, 12, 10, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  z-index: 2;
 }
 
 .eyebrow {
@@ -143,6 +150,17 @@ h2 {
   gap: 12px;
 }
 
+.login-form[hidden],
+#session-status[hidden],
+.secondary-button[hidden] {
+  display: none !important;
+}
+
+.session-panel.signed-in .login-form,
+.session-panel.signed-in #session-status {
+  display: none;
+}
+
 .login-form {
   margin-top: 14px;
   display: grid;
@@ -164,6 +182,213 @@ h2 {
   color: var(--text);
   padding: 11px 12px;
   font: inherit;
+}
+
+.map-tool-bar {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: calc(100% - 36px);
+  z-index: 3;
+}
+
+.map-search-panel,
+.map-filter-anchor {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(18, 13, 10, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.map-search-panel {
+  width: min(360px, calc(100vw - 180px));
+  min-width: min(280px, calc(100vw - 120px));
+}
+
+.map-filter-anchor {
+  position: relative;
+  width: 156px;
+  padding: 14px;
+}
+
+.filter-menu-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-toggle-button {
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.tool-toggle-button.active {
+  border-color: var(--panel-strong);
+  background: rgba(242, 199, 107, 0.18);
+}
+
+.search-shell {
+  position: relative;
+  margin-top: 6px;
+}
+
+.search-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(10, 9, 8, 0.55);
+  color: var(--text);
+  padding: 11px 12px;
+  font: inherit;
+}
+
+.search-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(18, 13, 10, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 6;
+}
+
+.search-status {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.filter-status {
+  margin-top: 8px;
+  min-height: 32px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.filter-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(420px, calc(100vw - 36px));
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(18, 13, 10, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+  z-index: 5;
+}
+
+.filter-section {
+  margin-top: 14px;
+}
+
+.filter-section-title {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-options-level {
+  max-height: min(36vh, 260px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-chip input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.filter-chip.active {
+  border-color: var(--panel-strong);
+  background: rgba(242, 199, 107, 0.12);
+}
+
+.search-result {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result:hover,
+.search-result.active {
+  border-color: var(--panel-strong);
+  background: rgba(242, 199, 107, 0.12);
+}
+
+.search-result-icon {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  display: block;
+}
+
+.search-result-main {
+  min-width: 0;
+}
+
+.search-result-name,
+.search-result-meta {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-name {
+  color: var(--text);
+}
+
+.search-result-meta,
+.search-result-distance {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .primary-button,
@@ -188,9 +413,13 @@ h2 {
   padding: 9px 12px;
 }
 
-.toolbar-actions {
+.map-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
   display: flex;
   gap: 8px;
+  z-index: 2;
 }
 
 .icon-button {
@@ -200,6 +429,28 @@ h2 {
   color: var(--text);
   font-size: 24px;
   line-height: 1;
+}
+
+.map-control-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(14, 12, 10, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.map-control-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.map-control-button svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  display: block;
+  margin: 0 auto;
 }
 
 .world-list,
@@ -268,5 +519,22 @@ h2 {
 
   .map-panel {
     min-height: 58vh;
+  }
+
+  .map-tool-bar {
+    left: 18px;
+    right: 18px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .map-search-panel,
+  .map-filter-anchor {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-menu {
+    width: 100%;
   }
 }
