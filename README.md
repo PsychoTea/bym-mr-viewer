@@ -11,6 +11,7 @@ The viewer now runs entirely in the browser. It talks directly to the BYM game s
 - User auth token is stored in the browser.
 - Full MR3 map data is cached for the current browser session only.
 - Assets are loaded from the BYM server CDN.
+- Frontend code is split into small ES modules under `app/static/js`.
 
 This works because the BYM server already exposes permissive CORS headers.
 
@@ -70,7 +71,6 @@ Optional environment variables:
 - Add a refresh control to invalidate the session map cache and pull a fresh full world snapshot.
 - Make the left pane collapsible after login.
 - Add tooltips for the home and zoom controls.
-- Refactor the frontend into smaller JS modules.
 - Add a server selector for switching between demo, live, or custom BYM hosts.
 - Add a favicon.
 - Add a credits/footer panel with issue reporting info.
