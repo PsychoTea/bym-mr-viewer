@@ -10,7 +10,6 @@ import {
   TRIBE_FILTER_OPTIONS,
   TYPE_FILTER_OPTIONS,
   createEmptyBaseFilter,
-  describeRelationship,
   describeTribe,
   describeYardType,
   escapeHtml,
@@ -575,17 +574,19 @@ export class ViewerApp {
       ["Coordinates", `${cell.x}, ${cell.y}`],
       ["Type", describeYardType(cell)],
       ["Level", formatNumber(Number(cell.l || 0))],
-      ["Altitude", formatNumber(Number(cell.i || 0))],
-      ["Range", formatNumber(Number(cell.r || 0))],
-      ["Damage", `${formatNumber(Number(cell.dm || 0))}%`],
-      ["Relationship", describeRelationship(cell.rel)],
     ];
 
-    if (cell.bid) {
-      rows.push(["Base ID", String(cell.bid)]);
+    if (Number(cell.r || 0) > 0) {
+      rows.push(["Range", formatNumber(Number(cell.r || 0))]);
     }
+
+    rows.push(["Damage", `${formatNumber(Number(cell.dm || 0))}%`]);
+
+    if (Number(cell.p || 0) === 1) {
+      rows.push(["Protection", "Damage protection"]);
+    }
+
     if (Number(cell.uid || 0) > 0) {
-      rows.push(["Owner ID", String(cell.uid)]);
       const ownedBaseCounts = this.renderer?.getOwnedBaseCounts(cell.uid) || {
         resource: 0,
         stronghold: 0,
@@ -595,11 +596,9 @@ export class ViewerApp {
       rows.push(["Stronghold Outposts", formatNumber(ownedBaseCounts.stronghold)]);
       rows.push(["Defender Outposts", formatNumber(ownedBaseCounts.fortification)]);
     }
+
     if (Number(cell.tid || 0) > 0 || Number(cell.uid || 0) === 0) {
       rows.push(["Tribe", describeTribe(cell)]);
-    }
-    if (Number(cell.p || 0) === 1) {
-      rows.push(["Protection", "Damage protection"]);
     }
 
     for (const [label, value] of rows) {

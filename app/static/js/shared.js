@@ -560,21 +560,6 @@ export function formatDistance(value) {
   return `${formatNumber(Number(value))} cell${Number(value) === 1 ? "" : "s"} away`;
 }
 
-export function describeRelationship(value) {
-  switch (Number(value)) {
-    case MR3.relationships.self:
-      return "Self";
-    case MR3.relationships.enemy:
-      return "Enemy";
-    case MR3.relationships.ally:
-      return "Ally";
-    case MR3.relationships.neutral:
-      return "Neutral";
-    default:
-      return "Unknown";
-  }
-}
-
 export function describeYardType(cell) {
   switch (Number(cell.b)) {
     case MR3.yardTypes.player:
