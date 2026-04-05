@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BYM MR Viewer</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="panel brand-panel">
+          <p class="eyebrow">Backyard Monsters Refitted</p>
+          <h1>Map Room 3 Viewer</h1>
+          <p class="muted">
+            Live MR3 data, browser token persistence, and CDN-backed game assets.
+          </p>
+        </div>
+
+        <div class="panel session-panel">
+          <div class="session-header">
+            <div>
+              <p class="eyebrow">Session</p>
+              <h2 id="session-name">Signed out</h2>
+            </div>
+            <button id="logout-button" class="secondary-button" type="button" hidden>Log out</button>
+          </div>
+
+          <form id="login-form" class="login-form">
+            <label>
+              <span>Email</span>
+              <input id="email-input" name="email" type="email" autocomplete="username" required>
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="password-input" name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <button id="login-button" class="primary-button" type="submit">Sign in</button>
+          </form>
+
+          <p id="session-status" class="muted">Sign in with your own BYM credentials.</p>
+        </div>
+
+        <div class="panel">
+          <p class="eyebrow">Worlds</p>
+          <h2>MR3 Worlds</h2>
+          <p class="notice">
+            The current BYM API only exposes MR3 cells for the authenticated player's current world.
+            Selecting a world updates metadata and leaderboards only.
+          </p>
+          <div id="world-list" class="world-list"></div>
+        </div>
+
+        <div class="panel">
+          <p class="eyebrow">Leaderboard</p>
+          <h2 id="leaderboard-title">No world selected</h2>
+          <div id="leaderboard-list" class="leaderboard-list"></div>
+        </div>
+
+        <div class="panel details-panel">
+          <p class="eyebrow">Cell</p>
+          <h2 id="details-title">No selection</h2>
+          <div id="details-content" class="details-content">
+            Hover a visible MR3 cell to inspect it.
+          </div>
+        </div>
+      </aside>
+
+      <main class="map-shell">
+        <header class="map-toolbar panel">
+          <div>
+            <p class="eyebrow">Viewer</p>
+            <h2 id="map-status">Waiting for sign-in</h2>
+          </div>
+          <div class="toolbar-actions">
+            <button id="zoom-out-button" class="icon-button" type="button" aria-label="Zoom out">-</button>
+            <button id="zoom-in-button" class="icon-button" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </header>
+
+        <section id="map-panel" class="map-panel panel">
+          <canvas id="map-canvas"></canvas>
+          <div id="map-overlay" class="map-overlay">Sign in to load live MR3 data.</div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
