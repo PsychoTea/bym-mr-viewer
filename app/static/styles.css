@@ -51,7 +51,7 @@ body {
   gap: 14px;
   overflow-y: auto;
   min-width: 0;
-  z-index: 4;
+  z-index: 7;
   transition: transform 180ms ease, opacity 180ms ease;
 }
 
