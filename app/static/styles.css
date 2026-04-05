@@ -135,6 +135,7 @@ body {
   padding: 16px;
   width: 100%;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .map-panel {
@@ -706,7 +707,9 @@ h2 {
 .leaderboard-panel {
   min-height: 0;
   min-width: 0;
-  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .leaderboard-list {
