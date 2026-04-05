@@ -161,6 +161,11 @@ h2 {
   display: none;
 }
 
+#session-status {
+  margin-top: 12px;
+  line-height: 1.4;
+}
+
 .login-form {
   margin-top: 14px;
   display: grid;
