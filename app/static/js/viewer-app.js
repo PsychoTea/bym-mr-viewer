@@ -234,14 +234,19 @@ export class ViewerApp {
     this.serverSelection.customPort = this.normalizePort(this.serverSelection.customPort);
     this.syncServerInputs();
 
-    const nextConfig = this.buildConfigForSelection();
-    this.config = setViewerConfig(nextConfig);
+    const baseConfig = this.buildConfigForSelection();
+    const discoveryClient = new ApiClient(baseConfig);
+    const resolvedApiVersion = await discoveryClient.resolveApiVersion();
+    this.config = setViewerConfig({
+      ...baseConfig,
+      apiVersion: resolvedApiVersion,
+    });
     this.api = new ApiClient(this.config);
     this.assets = new AssetCache(this.config);
     this.playerBaseIconUrl = this.assets.urlFor(ASSET_PATHS.playerBase);
     this.updateFavicon();
 
-    this.setSessionStatus("Loading CDN assets...");
+    this.setSessionStatus(`Connecting to ${this.describeSelectedServer()}...`);
     this.setSearchEnabled(false, "Loading CDN assets...");
     this.setFilterEnabled(false);
     this.session = null;
@@ -257,6 +262,7 @@ export class ViewerApp {
     this.elements.leaderboardList.textContent = "";
     this.renderDetails();
 
+    this.setSessionStatus("Loading CDN assets...");
     await this.assets.preload();
 
     if (!this.renderer) {
@@ -283,6 +289,17 @@ export class ViewerApp {
     }
 
     this.renderer.render();
+  }
+
+  describeSelectedServer() {
+    switch (this.serverSelection.mode) {
+      case "stable":
+        return "the stable BYMR server";
+      case "local":
+        return "the local BYMR server";
+      default:
+        return this.buildCustomBaseUrl(this.serverSelection.customHost, this.serverSelection.customPort);
+    }
   }
 
   updateFavicon() {
@@ -482,16 +499,24 @@ export class ViewerApp {
         return;
       }
 
+      const header = document.createElement("div");
+      header.className = "leaderboard-row leaderboard-header";
+      header.innerHTML = `
+        <span class="leaderboard-rank">#</span>
+        <span class="leaderboard-name">Username</span>
+        <span class="leaderboard-count">Resources</span>
+        <span class="leaderboard-count">Strongholds</span>
+      `;
+      this.elements.leaderboardList.appendChild(header);
+
       rows.forEach((entry, index) => {
         const row = document.createElement("div");
         row.className = "leaderboard-row";
         row.innerHTML = `
-          <strong>${index + 1}</strong>
-          <div>
-            <div>${escapeHtml(entry.username || "Unknown")}</div>
-            <div class="muted">Strongholds ${entry.stronghold_count || 0} | Resources ${entry.outpost_count || 0}</div>
-          </div>
-          <span class="muted">${escapeHtml(entry.discord_tag || "")}</span>
+          <strong class="leaderboard-rank">${index + 1}</strong>
+          <span class="leaderboard-name" title="${escapeHtml(entry.username || "Unknown")}">${escapeHtml(entry.username || "Unknown")}</span>
+          <span class="leaderboard-count">${formatNumber(Number(entry.outpost_count || 0))}</span>
+          <span class="leaderboard-count">${formatNumber(Number(entry.stronghold_count || 0))}</span>
         `;
         this.elements.leaderboardList.appendChild(row);
       });

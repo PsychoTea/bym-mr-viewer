@@ -1,4 +1,13 @@
-﻿import { buildBymUrl, buildSessionPayload, fetchJson, getViewerConfig } from "./shared.js";
+import {
+  buildBymUrl,
+  buildSessionPayload,
+  extractErrorMessage,
+  fetchJson,
+  getViewerConfig,
+  normalizeApiVersion,
+  parseJsonPayload,
+} from "./shared.js";
+
 export class ApiClient {
   constructor(config = getViewerConfig()) {
     this.config = config;
@@ -6,6 +15,47 @@ export class ApiClient {
 
   async getConfig() {
     return this.config;
+  }
+
+  async resolveApiVersion() {
+    const probeVersion = "__viewer_probe__";
+    const probeUrl = buildBymUrl(`/api/${probeVersion}/player/getinfo`, null, this.config);
+
+    try {
+      await fetchJson(probeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+        },
+        body: new URLSearchParams({
+          sessionType: "game",
+        }),
+      });
+    } catch (error) {
+      const fromProbe = this.extractApiVersion(error?.message || "");
+      if (fromProbe) {
+        return fromProbe;
+      }
+    }
+
+    try {
+      const response = await fetch(buildBymUrl("/init", null, this.config), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({}),
+      });
+      const payload = parseJsonPayload(await response.text());
+      const fromInit = this.extractApiVersion(extractErrorMessage(payload) || "");
+      if (fromInit) {
+        return fromInit;
+      }
+    } catch (error) {
+      void error;
+    }
+
+    return normalizeApiVersion(this.config.apiVersion);
   }
 
   async login(email, password) {
@@ -87,5 +137,9 @@ export class ApiClient {
   buildApiUrl(path, query = null) {
     return buildBymUrl(`/api/${this.config.apiVersion}${path}`, query, this.config);
   }
-}
 
+  extractApiVersion(message) {
+    const match = String(message || "").match(/Expected:\s*([^,\s]+)/i);
+    return match ? normalizeApiVersion(match[1]) : null;
+  }
+}
