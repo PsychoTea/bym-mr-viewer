@@ -38,8 +38,10 @@ export class ViewerApp {
     this.refreshInFlight = false;
     this.refreshCooldownUntil = 0;
     this.refreshCooldownTimer = 0;
+    this.sidebarCollapsed = false;
 
     this.elements = {
+      appRoot: document.getElementById("app"),
       mapSearchPanel: document.querySelector(".map-search-panel"),
       sessionPanel: document.querySelector(".session-panel"),
       emailInput: document.getElementById("email-input"),
@@ -71,6 +73,7 @@ export class ViewerApp {
       findHomeButton: document.getElementById("find-home-button"),
       zoomInButton: document.getElementById("zoom-in-button"),
       zoomOutButton: document.getElementById("zoom-out-button"),
+      sidebarToggleButton: document.getElementById("sidebar-toggle-button"),
     };
   }
 
@@ -107,6 +110,7 @@ export class ViewerApp {
     this.elements.findHomeButton.addEventListener("click", () => this.renderer.focusHome());
     this.elements.zoomInButton.addEventListener("click", () => this.renderer.zoomBy(1.18, true));
     this.elements.zoomOutButton.addEventListener("click", () => this.renderer.zoomBy(1 / 1.18, true));
+    this.elements.sidebarToggleButton.addEventListener("click", () => this.toggleSidebar());
     this.elements.searchInput.addEventListener("input", () => this.handleSearchInput());
     this.elements.searchInput.addEventListener("keydown", (event) => this.handleSearchKeyDown(event));
     this.elements.searchInput.addEventListener("focus", () => this.renderSearchResults());
@@ -147,6 +151,7 @@ export class ViewerApp {
       this.elements.loginForm.hidden = true;
       this.elements.sessionPanel.classList.add("signed-in");
       this.elements.sessionName.textContent = session.user.username || "Signed in";
+      this.setSidebarToggleVisible(true);
       this.refreshCooldownUntil = 0;
       this.clearRefreshCooldownTimer();
       this.setSessionStatus("");
@@ -205,6 +210,7 @@ export class ViewerApp {
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
     this.elements.sessionName.textContent = "Signed out";
+    this.setSidebarToggleVisible(false);
     this.setSessionStatus(message);
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");
     this.setFilterEnabled(false);
@@ -654,6 +660,29 @@ export class ViewerApp {
     this.refreshCooldownTimer = 0;
   }
 
+  toggleSidebar() {
+    this.setSidebarCollapsed(!this.sidebarCollapsed);
+  }
+
+  setSidebarCollapsed(collapsed) {
+    this.sidebarCollapsed = Boolean(collapsed);
+    this.elements.appRoot.classList.toggle("sidebar-collapsed", this.sidebarCollapsed);
+    this.elements.sidebarToggleButton.setAttribute("aria-expanded", String(!this.sidebarCollapsed));
+    this.elements.sidebarToggleButton.setAttribute(
+      "aria-label",
+      this.sidebarCollapsed ? "Show sidebar" : "Hide sidebar",
+    );
+    this.elements.sidebarToggleButton.title = this.sidebarCollapsed ? "Show sidebar" : "Hide sidebar";
+    window.setTimeout(() => this.renderer?.render(), 200);
+  }
+
+  setSidebarToggleVisible(visible) {
+    this.elements.sidebarToggleButton.hidden = !visible;
+    if (!visible) {
+      this.setSidebarCollapsed(false);
+    }
+  }
+
   handleSearchInput() {
     const query = this.elements.searchInput.value.trim().toLocaleLowerCase();
     if (!query) {
@@ -807,6 +836,7 @@ export class ViewerApp {
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
     this.elements.sessionName.textContent = "Signed out";
+    this.setSidebarToggleVisible(false);
     this.setSessionStatus("Sign in with your own BYM credentials.");
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");
     this.setFilterEnabled(false);

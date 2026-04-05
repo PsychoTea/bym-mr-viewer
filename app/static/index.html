@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BYM MR Viewer</title>
+    <link id="app-favicon" rel="icon" type="image/png">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -64,7 +65,33 @@
             Hover a visible MR3 cell to inspect it.
           </div>
         </div>
+
+        <div class="panel credits-panel">
+          <p class="muted credits-copy">
+            Made with &lt;3 by sparkey and GPT-5.4 For issues &amp; bug reports, please use the
+            <a
+              class="credits-link"
+              href="https://github.com/PsychoTea/bym-mr-viewer/issues"
+              target="_blank"
+              rel="noreferrer"
+            >GitHub tracker</a>.
+          </p>
+        </div>
       </aside>
+
+      <button
+        id="sidebar-toggle-button"
+        class="sidebar-toggle-button"
+        type="button"
+        aria-label="Hide sidebar"
+        aria-expanded="true"
+        title="Hide sidebar"
+        hidden
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15.5 4.5 8 12l7.5 7.5-2.1 2.1L3.8 12l9.6-9.6 2.1 2.1Z" />
+        </svg>
+      </button>
 
       <main class="map-shell">
         <section id="map-panel" class="map-panel panel">
@@ -135,19 +162,42 @@
               type="button"
               aria-label="Refresh world map"
               title="Refresh world map"
+              data-tooltip="Refresh map"
               disabled
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 5a7 7 0 1 1-6.65 9.18 1 1 0 1 1 1.9-.62A5 5 0 1 0 8 8.58V11a1 1 0 0 1-1.7.71l-3-3a1 1 0 0 1 0-1.42l3-3A1 1 0 0 1 8 5v1.46A6.96 6.96 0 0 1 12 5Z" />
               </svg>
             </button>
-            <button id="find-home-button" class="icon-button map-control-button" type="button" aria-label="Find home base" disabled>
+            <button
+              id="find-home-button"
+              class="icon-button map-control-button"
+              type="button"
+              aria-label="Find home base"
+              title="Find home base"
+              data-tooltip="Find home base"
+              disabled
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3 3 10.5V21h6v-5h6v5h6V10.5L12 3Z" />
               </svg>
             </button>
-            <button id="zoom-out-button" class="icon-button map-control-button" type="button" aria-label="Zoom out">-</button>
-            <button id="zoom-in-button" class="icon-button map-control-button" type="button" aria-label="Zoom in">+</button>
+            <button
+              id="zoom-out-button"
+              class="icon-button map-control-button"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+              data-tooltip="Zoom out"
+            >-</button>
+            <button
+              id="zoom-in-button"
+              class="icon-button map-control-button"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+              data-tooltip="Zoom in"
+            >+</button>
           </div>
         </section>
       </main>

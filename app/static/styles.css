@@ -31,17 +31,33 @@ body {
 }
 
 #app {
+  --sidebar-width: 360px;
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
+  position: relative;
+  transition: grid-template-columns 180ms ease;
+}
+
+#app.sidebar-collapsed {
+  --sidebar-width: 0px;
 }
 
 .sidebar {
+  width: 360px;
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  min-width: 0;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+#app.sidebar-collapsed .sidebar {
+  transform: translateX(calc(-100% - 18px));
+  opacity: 0;
+  pointer-events: none;
 }
 
 .map-shell {
@@ -49,6 +65,50 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.sidebar-toggle-button {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--sidebar-width) - 16px);
+  transform: translateY(-50%);
+  width: 34px;
+  height: 72px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(20, 16, 12, 0.9);
+  color: var(--text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  z-index: 8;
+  transition: left 180ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.sidebar-toggle-button[hidden] {
+  display: none !important;
+}
+
+.sidebar-toggle-button:hover,
+.sidebar-toggle-button:focus-visible {
+  background: rgba(36, 28, 20, 0.96);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.sidebar-toggle-button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  display: block;
+  margin: 0 auto;
+  transition: transform 180ms ease;
+}
+
+#app.sidebar-collapsed .sidebar-toggle-button {
+  left: 12px;
+}
+
+#app.sidebar-collapsed .sidebar-toggle-button svg {
+  transform: rotate(180deg);
 }
 
 .panel {
@@ -478,6 +538,47 @@ h2 {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 
+.map-control-button::before,
+.map-control-button::after {
+  position: absolute;
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.map-control-button::before {
+  content: attr(data-tooltip);
+  bottom: calc(100% + 12px);
+  transform: translate(-50%, 6px);
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(20, 16, 12, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.map-control-button::after {
+  content: "";
+  bottom: calc(100% + 4px);
+  transform: translate(-50%, 6px);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid rgba(20, 16, 12, 0.94);
+}
+
+.map-control-button:hover::before,
+.map-control-button:hover::after,
+.map-control-button:focus-visible::before,
+.map-control-button:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .map-control-button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -563,6 +664,25 @@ h2 {
   color: var(--muted);
 }
 
+.credits-panel {
+  margin-top: auto;
+}
+
+.credits-copy {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.credits-link {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.credits-link:hover,
+.credits-link:focus-visible {
+  text-decoration: underline;
+}
+
 .detail-row {
   display: flex;
   justify-content: space-between;
@@ -578,8 +698,13 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  #app.sidebar-collapsed {
+    --sidebar-width: 0px;
+  }
+
   .sidebar {
     order: 2;
+    width: auto;
   }
 
   .map-shell {
@@ -606,5 +731,9 @@ h2 {
 
   .filter-menu {
     width: 100%;
+  }
+
+  .sidebar-toggle-button {
+    display: none !important;
   }
 }
