@@ -374,6 +374,11 @@ h2 {
   z-index: 6;
 }
 
+.search-results[hidden],
+.filter-menu[hidden] {
+  display: none !important;
+}
+
 .filter-menu {
   position: absolute;
   top: calc(100% + 8px);
