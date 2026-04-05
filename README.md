@@ -1,51 +1,76 @@
 # BYM MR Viewer
 
-A standalone Dockerized Python application that signs users into Backyard Monsters Refitted, fetches live Map Room 3 data from the BYM server, and renders the map in a browser using CDN-hosted game assets.
+A static Map Room 3 viewer for Backyard Monsters Refitted.
 
-## Current scope
+The viewer now runs entirely in the browser. It talks directly to the BYM game server for auth, world metadata, and live MR3 cell data, and it loads map art straight from the BYM CDN. The only Python left is a tiny static-file host for local development.
+
+## Architecture
+
+- No Python API proxy.
+- Browser calls the BYM server directly.
+- User auth token is stored in the browser.
+- Full MR3 map data is cached for the current browser session only.
+- Assets are loaded from the BYM server CDN.
+
+This works because the BYM server already exposes permissive CORS headers.
+
+## Current Scope
 
 - Map Room 3 only.
 - Per-user BYM login.
-- BYM auth token is stored in the browser so users stay signed in.
-- The viewer fetches live BYM data on demand instead of maintaining its own world cache.
+- Live data fetched from the configured BYM server.
+- Search and filter tools run entirely in-browser.
 - World listing and leaderboards are available for every MR3 world.
 
-## Important limitation
+## Important Limitation
 
 The current BYM API does not expose MR3 cell data for arbitrary worlds. It only returns MR3 cells for the authenticated player's current `worldid`.
 
 Because this viewer must not modify the BYM server, the map canvas can only render the logged-in player's current MR3 world. The worlds list still works for browsing metadata and leaderboards.
 
-## Run with Docker
+## Runtime Config
 
-```bash
-docker compose up --build
+Edit [app/static/config.js](C:\Users\Ben\Documents\GitHub\bym-mr-viewer\app\static\config.js) to point the viewer at a different BYM server:
+
+```js
+window.BYM_MR_VIEWER_CONFIG = {
+  bymBaseUrl: "http://localhost:3001",
+  cdnBaseUrl: "http://localhost:3001",
+  apiVersion: "v1.5.4-beta",
+};
 ```
 
-The viewer runs on `http://localhost:8081` by default.
+For the local demo stack, both API and CDN should stay on `http://localhost:3001`.
 
-## Environment
+## Run Locally
 
-- `BYM_BASE_URL`: BYM game server base URL used for API calls.
-- `BYM_CDN_BASE_URL`: BYM asset host used for MR3 images. For the demo server this should be browser-reachable, typically `http://localhost:3001`.
-- `BYM_API_VERSION`: API version segment, default `v1.5.4-beta`.
-- `PORT`: Host port published by Docker compose, default `8081`.
-- `REQUEST_TIMEOUT_SECONDS`: Upstream BYM request timeout.
+```bash
+python dev_server.py
+```
 
-## Demo setup
+By default this serves [app/static](C:\Users\Ben\Documents\GitHub\bym-mr-viewer\app\static) on `http://localhost:8080`.
 
-When the BYM demo server is running on the host machine at `localhost:3001`:
+Example with a custom port in PowerShell:
 
-- the Python container talks to the API through `http://host.docker.internal:3001`
-- the browser fetches CDN assets from `http://localhost:3001`
+```bash
+$env:PORT=9090
+python dev_server.py
+```
 
-## TODO:
+If your machine exposes Python as `python3` instead of `python`, use that command instead.
 
-- Add refresh button to re-fetch data from live server
-- Make left pane collapsible after logged in
-- Add tooltips when hovering over refresh / home / zoom out / zoom in buttons
-- Get rid of python backend and make it all in-browser
-- Refactor JS code into multiple files 
-- Add server selector so you can change between main server, local server, or custom server with IP + port
-    - This setting should be saved 
-- Update README and add documentation
+Optional environment variables:
+
+- `HOST`: bind host for the static server, default `0.0.0.0`
+- `PORT`: bind port for the static server, default `8080`
+- `STATIC_DIR`: alternate static directory, default `app/static`
+
+## TODO
+
+- Add a refresh control to invalidate the session map cache and pull a fresh full world snapshot.
+- Make the left pane collapsible after login.
+- Add tooltips for the home and zoom controls.
+- Refactor the frontend into smaller JS modules.
+- Add a server selector for switching between demo, live, or custom BYM hosts.
+- Add a favicon.
+- Add a credits/footer panel with issue reporting info.

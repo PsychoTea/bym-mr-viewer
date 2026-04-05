@@ -5,6 +5,11 @@ const SESSION_CACHE_SESSION_KEY = "bym-mr-viewer-session-id";
 const FULL_MAP_CACHE_VERSION = 1;
 const FULL_MAP_CACHE_KEY_PREFIX = "bym-mr-viewer-full-map";
 const SEARCH_RESULT_LIMIT = 100;
+const DEFAULT_VIEWER_CONFIG = Object.freeze({
+  bymBaseUrl: "http://localhost:3001",
+  cdnBaseUrl: "http://localhost:3001",
+  apiVersion: "v1.5.4-beta",
+});
 
 const MR3 = {
   mapWidth: 500,
@@ -148,41 +153,71 @@ const FORTIFICATION_DIRECTIONS = [
 ];
 
 class ApiClient {
+  constructor(config = getViewerConfig()) {
+    this.config = config;
+  }
+
   async getConfig() {
-    return fetchJson("/api/config");
+    return this.config;
   }
 
   async login(email, password) {
-    return fetchJson("/api/auth/login", {
+    const loginResponse = await fetchJson(this.buildApiUrl("/player/getinfo"), {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
       },
-      body: JSON.stringify({ email, password }),
+      body: new URLSearchParams({
+        email,
+        password,
+        sessionType: "game",
+      }),
     });
+
+    const map = await this.getMapMeta(loginResponse.token);
+    return buildSessionPayload(loginResponse, map);
   }
 
   async refresh(token) {
-    return fetchJson("/api/auth/refresh", {
+    const loginResponse = await fetchJson(this.buildApiUrl("/player/getinfo"), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
       },
+      body: new URLSearchParams({
+        token,
+        sessionType: "game",
+      }),
     });
+
+    const map = await this.getMapMeta(loginResponse.token);
+    return buildSessionPayload(loginResponse, map);
   }
 
   async getWorlds() {
-    return fetchJson("/api/worlds");
+    return fetchJson(this.buildApiUrl("/worlds"));
   }
 
   async getLeaderboard(worldId, mapVersion = 3) {
-    return fetchJson(
-      `/api/leaderboards?worldid=${encodeURIComponent(worldId)}&mapversion=${mapVersion}`,
-    );
+    return fetchJson(this.buildApiUrl("/leaderboards", {
+      worldid: worldId,
+      mapversion: mapVersion,
+    }));
+  }
+
+  async getMapMeta(token) {
+    return fetchJson(this.buildApiUrl("/bm/getnewmap"), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+      },
+      body: new URLSearchParams(),
+    });
   }
 
   async getMapInit(token) {
-    return fetchJson("/api/map/init", {
+    return fetchJson(buildBymUrl("/worldmapv3/initworldmap", null, this.config), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -190,14 +225,20 @@ class ApiClient {
   }
 
   async getMapCells(token, cellIds) {
-    return fetchJson("/api/map/cells", {
+    return fetchJson(buildBymUrl("/worldmapv3/getcells", null, this.config), {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
       },
-      body: JSON.stringify({ cellids: cellIds }),
+      body: new URLSearchParams({
+        cellids: JSON.stringify(cellIds),
+      }),
     });
+  }
+
+  buildApiUrl(path, query = null) {
+    return buildBymUrl(`/api/${this.config.apiVersion}${path}`, query, this.config);
   }
 }
 
@@ -2381,14 +2422,124 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const payload = await response.json();
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (error) {
+    throw new Error(error?.message ? `Unable to reach BYM server: ${error.message}` : "Unable to reach BYM server.");
+  }
+
+  const rawBody = await response.text();
+  const payload = parseJsonPayload(rawBody);
 
   if (!response.ok) {
-    throw new Error(payload.error || "Request failed");
+    throw new Error(extractErrorMessage(payload) || response.statusText || "Request failed");
   }
 
   return payload;
+}
+
+function getViewerConfig() {
+  if (getViewerConfig.cached) {
+    return getViewerConfig.cached;
+  }
+
+  const runtimeConfig =
+    typeof window !== "undefined" && typeof window.BYM_MR_VIEWER_CONFIG === "object"
+      ? window.BYM_MR_VIEWER_CONFIG
+      : {};
+
+  getViewerConfig.cached = {
+    bymBaseUrl: normalizeBaseUrl(runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.bymBaseUrl),
+    cdnBaseUrl: normalizeBaseUrl(
+      runtimeConfig.cdnBaseUrl || runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.cdnBaseUrl,
+    ),
+    apiVersion: normalizeApiVersion(runtimeConfig.apiVersion || DEFAULT_VIEWER_CONFIG.apiVersion),
+  };
+
+  return getViewerConfig.cached;
+}
+
+function buildBymUrl(path, query = null, config = getViewerConfig()) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${config.bymBaseUrl}${normalizedPath}`);
+
+  if (query && typeof query === "object") {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  return url.toString();
+}
+
+function buildSessionPayload(loginResponse, map) {
+  return {
+    token: loginResponse?.token || "",
+    user: {
+      userid: loginResponse?.userid ?? loginResponse?.userId ?? null,
+      username: loginResponse?.username || "",
+      email: loginResponse?.email || "",
+      pic_square: loginResponse?.pic_square || "",
+    },
+    map: map || {},
+  };
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || "").replace(/\/+$/, "");
+}
+
+function normalizeApiVersion(value) {
+  return String(value || DEFAULT_VIEWER_CONFIG.apiVersion).replace(/^\/+|\/+$/g, "");
+}
+
+function parseJsonPayload(rawBody) {
+  const text = String(rawBody || "").trim();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { raw: text };
+  }
+}
+
+function extractErrorMessage(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  if (typeof payload.error === "string" && payload.error.trim()) {
+    return payload.error;
+  }
+
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message;
+  }
+
+  if (
+    payload.errorDetails &&
+    typeof payload.errorDetails === "object" &&
+    typeof payload.errorDetails.message === "string" &&
+    payload.errorDetails.message.trim()
+  ) {
+    return payload.errorDetails.message;
+  }
+
+  if (payload.details && typeof payload.details === "object") {
+    return extractErrorMessage(payload.details);
+  }
+
+  if (typeof payload.raw === "string" && payload.raw.trim()) {
+    return payload.raw;
+  }
+
+  return null;
 }
 
 function calculateCellId(cellX, cellY, mapWidth) {
