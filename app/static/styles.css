@@ -50,6 +50,7 @@ body {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: none;
   min-width: 0;
   z-index: 7;
@@ -133,6 +134,8 @@ body {
 .details-panel,
 .sidebar .panel {
   padding: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
 .map-panel {
@@ -697,12 +700,19 @@ h2 {
 
 .leaderboard-panel {
   min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .leaderboard-list {
+  width: 100%;
+  min-width: 0;
   gap: 6px;
   max-height: min(34vh, 360px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
   scrollbar-width: none;
 }
@@ -737,6 +747,10 @@ h2 {
   gap: 10px;
   align-items: center;
   font-size: 13px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .leaderboard-header {
@@ -756,6 +770,7 @@ h2 {
 }
 
 .leaderboard-name {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
