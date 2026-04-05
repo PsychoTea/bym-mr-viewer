@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .env
 .venv/
+dev_server.out.log
+dev_server.err.log
