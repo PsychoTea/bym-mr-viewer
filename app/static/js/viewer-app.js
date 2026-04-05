@@ -40,6 +40,7 @@ export class ViewerApp {
     this.searchEntries = [];
     this.searchMatches = [];
     this.searchActiveIndex = -1;
+    this.playerFilterEntries = [];
     this.filterState = createEmptyBaseFilter();
     this.availableFilterLevels = [];
     this.filterMenuOpen = false;
@@ -80,6 +81,8 @@ export class ViewerApp {
       filterStatus: document.getElementById("filter-status"),
       filterMenu: document.getElementById("filter-menu"),
       filterClearButton: document.getElementById("filter-clear-button"),
+      filterPlayerInput: document.getElementById("filter-player-input"),
+      filterPlayerOptions: document.getElementById("filter-player-options"),
       filterTypeOptions: document.getElementById("filter-type-options"),
       filterTribeOptions: document.getElementById("filter-tribe-options"),
       filterLevelOptions: document.getElementById("filter-level-options"),
@@ -120,6 +123,8 @@ export class ViewerApp {
     });
     this.elements.filterToggleButton.addEventListener("click", () => this.handleFilterToggle());
     this.elements.filterClearButton.addEventListener("click", () => this.clearFilters());
+    this.elements.filterPlayerInput.addEventListener("input", () => this.handlePlayerFilterInput());
+    this.elements.filterPlayerInput.addEventListener("change", () => this.handlePlayerFilterInput());
     this.elements.filterTypeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
     this.elements.filterTribeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
     this.elements.filterLevelOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
@@ -606,15 +611,49 @@ export class ViewerApp {
     }
 
     this.availableFilterLevels = this.renderer ? this.renderer.getAvailableWildBaseLevels() : [];
+    this.playerFilterEntries = this.buildPlayerFilterEntries();
     if (preserveState) {
       const levelSet = new Set(this.availableFilterLevels);
+      const validOwnerIds = new Set(this.playerFilterEntries.map((entry) => entry.ownerId));
       this.filterState = {
         ...this.filterState,
         levels: this.filterState.levels.filter((level) => levelSet.has(level)),
+        playerOwnerId: validOwnerIds.has(Number(this.filterState.playerOwnerId || 0))
+          ? Number(this.filterState.playerOwnerId || 0)
+          : null,
+        playerUsername: validOwnerIds.has(Number(this.filterState.playerOwnerId || 0))
+          ? this.filterState.playerUsername
+          : "",
       };
     }
     this.renderFilterOptions();
     this.applyFilters();
+  }
+
+  buildPlayerFilterEntries() {
+    if (!this.renderer) {
+      return [];
+    }
+
+    const seenOwnerIds = new Set();
+    return this.renderer
+      .getSearchablePlayerBases()
+      .filter((entry) => {
+        const ownerId = Number(entry.ownerId || 0);
+        if (ownerId <= 0 || seenOwnerIds.has(ownerId)) {
+          return false;
+        }
+
+        seenOwnerIds.add(ownerId);
+        return true;
+      })
+      .sort((left, right) => {
+        if (left.distance !== right.distance) {
+          return Number(left.distance ?? Number.MAX_SAFE_INTEGER) - Number(right.distance ?? Number.MAX_SAFE_INTEGER);
+        }
+
+        return left.normalizedUsername.localeCompare(right.normalizedUsername);
+      });
   }
 
   setSearchEnabled(enabled, message = "") {
@@ -639,6 +678,7 @@ export class ViewerApp {
     if (!enabled) {
       this.filterState = createEmptyBaseFilter();
       this.availableFilterLevels = [];
+      this.playerFilterEntries = [];
       this.setFilterMenuOpen(false);
     }
 
@@ -663,6 +703,35 @@ export class ViewerApp {
     this.syncFilterButtonState();
   }
 
+  handlePlayerFilterInput() {
+    const rawQuery = this.elements.filterPlayerInput.value.trim();
+    if (!rawQuery) {
+      this.filterState = {
+        ...this.filterState,
+        playerOwnerId: null,
+        playerUsername: "",
+      };
+      this.renderFilterOptions();
+      this.applyFilters();
+      return;
+    }
+
+    const match = this.playerFilterEntries.find(
+      (entry) => entry.normalizedUsername === rawQuery.toLocaleLowerCase(),
+    );
+    if (!match) {
+      return;
+    }
+
+    this.filterState = {
+      ...createEmptyBaseFilter(),
+      playerOwnerId: match.ownerId,
+      playerUsername: match.username,
+    };
+    this.renderFilterOptions();
+    this.applyFilters();
+  }
+
   handleFilterOptionChange(event) {
     const input = event.target;
     if (!(input instanceof HTMLInputElement)) {
@@ -684,6 +753,8 @@ export class ViewerApp {
 
     this.filterState = {
       ...this.filterState,
+      playerOwnerId: null,
+      playerUsername: "",
       [group]: [...nextValues].sort((left, right) => {
         if (typeof left === "number" && typeof right === "number") {
           return left - right;
@@ -710,6 +781,7 @@ export class ViewerApp {
 
   renderFilterOptions() {
     const filterEnabled = !this.elements.filterToggleButton.disabled;
+    this.renderPlayerFilterOptions(filterEnabled);
     this.renderFilterGroup(this.elements.filterTypeOptions, "types", TYPE_FILTER_OPTIONS, filterEnabled);
     this.renderFilterGroup(this.elements.filterTribeOptions, "tribes", TRIBE_FILTER_OPTIONS, filterEnabled);
 
@@ -726,6 +798,21 @@ export class ViewerApp {
     }
 
     this.elements.filterClearButton.disabled = !hasActiveBaseFilterState(this.filterState);
+  }
+
+  renderPlayerFilterOptions(enabled) {
+    this.elements.filterPlayerInput.disabled = !enabled;
+    this.elements.filterPlayerInput.value = this.filterState.playerUsername || "";
+    this.elements.filterPlayerInput.placeholder = enabled
+      ? "Filter by username"
+      : "Sign in to filter by player";
+
+    this.elements.filterPlayerOptions.replaceChildren();
+    this.playerFilterEntries.forEach((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.username;
+      this.elements.filterPlayerOptions.appendChild(option);
+    });
   }
 
   renderFilterGroup(container, group, options, enabled) {
@@ -802,6 +889,10 @@ export class ViewerApp {
 
     if (this.filterState.levels.length) {
       segments.push(`Levels: ${this.filterState.levels.join(", ")}`);
+    }
+
+    if (this.filterState.playerUsername) {
+      segments.push(`Player: ${this.filterState.playerUsername}`);
     }
 
     this.elements.filterStatus.textContent = segments.join(" | ");

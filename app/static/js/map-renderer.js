@@ -256,7 +256,8 @@ export class MapRenderer {
     return (
       this.baseFilter.types.size > 0 ||
       this.baseFilter.tribes.size > 0 ||
-      this.baseFilter.levels.size > 0
+      this.baseFilter.levels.size > 0 ||
+      Number(this.baseFilter.playerOwnerId || 0) > 0
     );
   }
 
@@ -280,11 +281,33 @@ export class MapRenderer {
       return true;
     }
 
+    if (Number(this.baseFilter.playerOwnerId || 0) > 0) {
+      return this.matchesPlayerOwnerFilter(cell);
+    }
+
     if (this.isAlwaysVisibleOwnedBase(cell)) {
       return true;
     }
 
     return this.matchesBaseFilter(cell);
+  }
+
+  matchesPlayerOwnerFilter(cell) {
+    const ownerId = Number(this.baseFilter.playerOwnerId || 0);
+    if (ownerId <= 0) {
+      return false;
+    }
+
+    if (Number(cell.uid || 0) !== ownerId) {
+      return false;
+    }
+
+    return (
+      Number(cell.b) === MR3.yardTypes.player ||
+      Number(cell.b) === MR3.yardTypes.resource ||
+      Number(cell.b) === MR3.yardTypes.stronghold ||
+      Number(cell.b) === MR3.yardTypes.fortification
+    );
   }
 
   matchesBaseFilter(cell) {
@@ -782,6 +805,7 @@ export class MapRenderer {
 
       bases.push({
         cell,
+        ownerId: Number(cell.uid || 0),
         username: name,
         normalizedUsername: name.toLocaleLowerCase(),
         level: Number(cell.l || 0),

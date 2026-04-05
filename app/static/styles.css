@@ -451,6 +451,22 @@ h2 {
   font-size: 13px;
 }
 
+.filter-player-field {
+  display: grid;
+  gap: 8px;
+}
+
+.filter-player-input {
+  width: 100%;
+}
+
+.filter-help {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .filter-options {
   display: flex;
   flex-wrap: wrap;

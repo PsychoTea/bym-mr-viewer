@@ -153,6 +153,24 @@
                   <button id="filter-clear-button" class="secondary-button" type="button">Clear</button>
                 </div>
                 <div class="filter-section">
+                  <p class="filter-section-title">Player</p>
+                  <div class="filter-player-field">
+                    <input
+                      id="filter-player-input"
+                      class="search-input filter-player-input"
+                      type="search"
+                      list="filter-player-options"
+                      placeholder="Filter by username"
+                      autocomplete="off"
+                      spellcheck="false"
+                    >
+                    <datalist id="filter-player-options"></datalist>
+                  </div>
+                  <p class="filter-help">
+                    Show a player&apos;s main yard and owned outposts, including fortifications.
+                  </p>
+                </div>
+                <div class="filter-section">
                   <p class="filter-section-title">Type</p>
                   <div id="filter-type-options" class="filter-options"></div>
                 </div>

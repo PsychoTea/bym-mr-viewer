@@ -350,6 +350,8 @@ export function createEmptyBaseFilter() {
     types: [],
     tribes: [],
     levels: [],
+    playerOwnerId: null,
+    playerUsername: "",
   };
 }
 
@@ -358,14 +360,17 @@ export function createEmptyRendererBaseFilter() {
     types: new Set(),
     tribes: new Set(),
     levels: new Set(),
+    playerOwnerId: null,
   };
 }
 
 export function normalizeRendererBaseFilter(filter) {
+  const playerOwnerId = Number(filter?.playerOwnerId || 0);
   return {
     types: new Set(filter?.types || []),
     tribes: new Set(filter?.tribes || []),
     levels: new Set((filter?.levels || []).map((value) => Number(value)).filter((value) => value > 0)),
+    playerOwnerId: playerOwnerId > 0 ? playerOwnerId : null,
   };
 }
 
@@ -373,7 +378,8 @@ export function hasActiveBaseFilterState(filter) {
   return (
     Number(filter?.types?.length || 0) > 0 ||
     Number(filter?.tribes?.length || 0) > 0 ||
-    Number(filter?.levels?.length || 0) > 0
+    Number(filter?.levels?.length || 0) > 0 ||
+    Number(filter?.playerOwnerId || 0) > 0
   );
 }
 
