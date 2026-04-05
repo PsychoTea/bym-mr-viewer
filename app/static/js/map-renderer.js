@@ -77,7 +77,7 @@ export class MapRenderer {
     this.cellCache.clear();
     this.fullMapLoaded = false;
     this.fullMapPreloading = false;
-    this.fullMapCacheKey = buildFullMapCacheKey(this.currentUserId, this.mapMeta);
+    this.fullMapCacheKey = buildFullMapCacheKey(this.currentUserId, this.mapMeta, this.api?.config?.bymBaseUrl);
     this.homeCellKey = null;
     this.hoveredCellKey = null;
     this.selectedCellKey = null;

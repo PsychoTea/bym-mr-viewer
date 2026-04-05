@@ -238,6 +238,43 @@ h2 {
   line-height: 1.45;
 }
 
+.server-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.server-select-label,
+.server-custom-field span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.server-select,
+.server-custom-field input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(10, 9, 8, 0.55);
+  color: var(--text);
+  padding: 11px 12px;
+  font: inherit;
+}
+
+.server-custom-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+}
+
+.server-custom-fields[hidden] {
+  display: none !important;
+}
+
+.server-custom-field {
+  display: grid;
+  gap: 6px;
+}
+
 .session-header {
   display: flex;
   justify-content: space-between;
@@ -720,6 +757,10 @@ h2 {
   .map-filter-anchor {
     width: 100%;
     min-width: 0;
+  }
+
+  .server-custom-fields {
+    grid-template-columns: 1fr;
   }
 
   .filter-menu {

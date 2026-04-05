@@ -4,7 +4,9 @@ import { MapRenderer } from "./map-renderer.js";
 import {
   ASSET_PATHS,
   SEARCH_RESULT_LIMIT,
-  TOKEN_STORAGE_KEY,
+  SERVER_SELECTION_STORAGE_KEY,
+  STABLE_VIEWER_CONFIG,
+  buildTokenStorageKey,
   TRIBE_FILTER_OPTIONS,
   TYPE_FILTER_OPTIONS,
   createEmptyBaseFilter,
@@ -14,15 +16,21 @@ import {
   escapeHtml,
   formatDistance,
   formatNumber,
+  getLocalViewerConfig,
   hasActiveBaseFilterState,
+  normalizeApiVersion,
+  normalizeBaseUrl,
+  setViewerConfig,
 } from "./shared.js";
 
 const MAP_REFRESH_COOLDOWN_MS = 30_000;
 
 export class ViewerApp {
   constructor() {
-    this.api = new ApiClient();
+    this.api = null;
+    this.assets = null;
     this.config = null;
+    this.localConfig = null;
     this.session = null;
     this.worlds = [];
     this.selectedWorldId = null;
@@ -39,11 +47,16 @@ export class ViewerApp {
     this.refreshCooldownUntil = 0;
     this.refreshCooldownTimer = 0;
     this.sidebarCollapsed = false;
+    this.serverSelection = null;
 
     this.elements = {
       appRoot: document.getElementById("app"),
       mapSearchPanel: document.querySelector(".map-search-panel"),
       sessionPanel: document.querySelector(".session-panel"),
+      serverSelect: document.getElementById("server-select"),
+      serverCustomFields: document.getElementById("server-custom-fields"),
+      serverHostInput: document.getElementById("server-host-input"),
+      serverPortInput: document.getElementById("server-port-input"),
       emailInput: document.getElementById("email-input"),
       passwordInput: document.getElementById("password-input"),
       loginForm: document.getElementById("login-form"),
@@ -78,32 +91,19 @@ export class ViewerApp {
   }
 
   async start() {
-    this.config = await this.api.getConfig();
-    const assets = new AssetCache(this.config);
-    this.playerBaseIconUrl = assets.urlFor(ASSET_PATHS.playerBase);
-    this.setSessionStatus("Loading CDN assets...");
-    this.setSearchEnabled(false, "Loading CDN assets...");
-    this.setFilterEnabled(false);
-    await assets.preload();
-
-    this.renderer = new MapRenderer({
-      canvas: this.elements.mapCanvas,
-      overlayEl: this.elements.mapOverlay,
-      coordsEl: this.elements.mapCoordinates,
-      statusEl: null,
-      assets,
-      api: this.api,
-      onHoverCell: (cell) => this.handleHoveredCell(cell),
-      onSelectCell: (cell) => this.handleSelectedCell(cell),
-    });
-
+    this.localConfig = getLocalViewerConfig();
+    this.serverSelection = this.loadServerSelection();
     this.bindEvents();
-    await this.loadWorlds();
-    await this.restoreSession();
-    this.renderer.render();
+    this.syncServerInputs();
+    await this.applyServerSelection({ restoreSession: true });
   }
 
   bindEvents() {
+    this.elements.serverSelect.addEventListener("change", () => this.handleServerSelectionChange());
+    this.elements.serverHostInput.addEventListener("change", () => this.handleCustomServerChange());
+    this.elements.serverPortInput.addEventListener("change", () => this.handleCustomServerChange());
+    this.elements.serverHostInput.addEventListener("keydown", (event) => this.handleCustomServerKeyDown(event));
+    this.elements.serverPortInput.addEventListener("keydown", (event) => this.handleCustomServerKeyDown(event));
     this.elements.loginForm.addEventListener("submit", (event) => this.handleLogin(event));
     this.elements.logoutButton.addEventListener("click", () => this.handleLogout());
     this.elements.refreshButton.addEventListener("click", () => this.handleRefreshMap());
@@ -124,8 +124,178 @@ export class ViewerApp {
     this.elements.filterLevelOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
   }
 
+  loadServerSelection() {
+    const fallback = {
+      mode: "stable",
+      customHost: "http://127.0.0.1",
+      customPort: "3001",
+    };
+
+    try {
+      const raw = window.localStorage.getItem(SERVER_SELECTION_STORAGE_KEY);
+      if (!raw) {
+        return fallback;
+      }
+
+      const parsed = JSON.parse(raw);
+      return {
+        mode: ["stable", "local", "custom"].includes(parsed?.mode) ? parsed.mode : fallback.mode,
+        customHost: String(parsed?.customHost || fallback.customHost),
+        customPort: String(parsed?.customPort || fallback.customPort),
+      };
+    } catch (error) {
+      console.warn("Failed to restore server selection.", error);
+      return fallback;
+    }
+  }
+
+  persistServerSelection() {
+    window.localStorage.setItem(SERVER_SELECTION_STORAGE_KEY, JSON.stringify(this.serverSelection));
+  }
+
+  syncServerInputs() {
+    this.elements.serverSelect.value = this.serverSelection.mode;
+    this.elements.serverCustomFields.hidden = this.serverSelection.mode !== "custom";
+    this.elements.serverHostInput.value = this.serverSelection.customHost;
+    this.elements.serverPortInput.value = this.serverSelection.customPort;
+  }
+
+  async handleServerSelectionChange() {
+    this.serverSelection.mode = this.elements.serverSelect.value;
+    this.syncServerInputs();
+    this.persistServerSelection();
+    try {
+      await this.applyServerSelection({ restoreSession: true });
+    } catch (error) {
+      console.error(error);
+      this.setSessionStatus(error.message || "Failed to switch BYM server.", true);
+    }
+  }
+
+  async handleCustomServerChange() {
+    this.serverSelection.customHost = this.elements.serverHostInput.value.trim() || "http://127.0.0.1";
+    this.serverSelection.customPort = this.normalizePort(this.elements.serverPortInput.value);
+    this.syncServerInputs();
+    this.persistServerSelection();
+
+    if (this.serverSelection.mode === "custom") {
+      try {
+        await this.applyServerSelection({ restoreSession: true });
+      } catch (error) {
+        console.error(error);
+        this.setSessionStatus(error.message || "Failed to switch BYM server.", true);
+      }
+    }
+  }
+
+  async handleCustomServerKeyDown(event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+    await this.handleCustomServerChange();
+  }
+
+  buildConfigForSelection() {
+    if (this.serverSelection.mode === "stable") {
+      return STABLE_VIEWER_CONFIG;
+    }
+
+    if (this.serverSelection.mode === "local") {
+      return this.localConfig;
+    }
+
+    return {
+      bymBaseUrl: this.buildCustomBaseUrl(this.serverSelection.customHost, this.serverSelection.customPort),
+      cdnBaseUrl: this.buildCustomBaseUrl(this.serverSelection.customHost, this.serverSelection.customPort),
+      apiVersion: normalizeApiVersion(this.localConfig.apiVersion),
+    };
+  }
+
+  buildCustomBaseUrl(host, port) {
+    const rawHost = String(host || "").trim() || "http://127.0.0.1";
+    const normalizedHost = /^https?:\/\//i.test(rawHost) ? rawHost : `http://${rawHost}`;
+    const url = new URL(normalizedHost);
+    url.port = this.normalizePort(port);
+    return normalizeBaseUrl(url.origin);
+  }
+
+  normalizePort(value) {
+    const parsed = Number.parseInt(String(value || ""), 10);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 65535) {
+      return "3001";
+    }
+
+    return String(parsed);
+  }
+
+  async applyServerSelection({ restoreSession }) {
+    this.serverSelection.customPort = this.normalizePort(this.serverSelection.customPort);
+    this.syncServerInputs();
+
+    const nextConfig = this.buildConfigForSelection();
+    this.config = setViewerConfig(nextConfig);
+    this.api = new ApiClient(this.config);
+    this.assets = new AssetCache(this.config);
+    this.playerBaseIconUrl = this.assets.urlFor(ASSET_PATHS.playerBase);
+    this.updateFavicon();
+
+    this.setSessionStatus("Loading CDN assets...");
+    this.setSearchEnabled(false, "Loading CDN assets...");
+    this.setFilterEnabled(false);
+    this.session = null;
+    this.worlds = [];
+    this.selectedWorldId = null;
+    this.hoveredCell = null;
+    this.selectedCell = null;
+    this.refreshInFlight = false;
+    this.refreshCooldownUntil = 0;
+    this.clearRefreshCooldownTimer();
+    this.renderWorldList();
+    this.elements.leaderboardTitle.textContent = "No world selected";
+    this.elements.leaderboardList.textContent = "";
+    this.renderDetails();
+
+    await this.assets.preload();
+
+    if (!this.renderer) {
+      this.renderer = new MapRenderer({
+        canvas: this.elements.mapCanvas,
+        overlayEl: this.elements.mapOverlay,
+        coordsEl: this.elements.mapCoordinates,
+        statusEl: null,
+        assets: this.assets,
+        api: this.api,
+        onHoverCell: (cell) => this.handleHoveredCell(cell),
+        onSelectCell: (cell) => this.handleSelectedCell(cell),
+      });
+    } else {
+      this.renderer.api = this.api;
+      this.renderer.assets = this.assets;
+    }
+
+    this.setSignedOutState();
+    await this.loadWorlds();
+
+    if (restoreSession) {
+      await this.restoreSession();
+    }
+
+    this.renderer.render();
+  }
+
+  updateFavicon() {
+    const favicon = document.getElementById("app-favicon");
+    if (!favicon || favicon.tagName !== "LINK") {
+      return;
+    }
+
+    favicon.href = `${this.config.cdnBaseUrl}/assets/missionicon/icon_maproom.png`;
+  }
+
   async restoreSession() {
-    const storedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    const storedToken = window.localStorage.getItem(buildTokenStorageKey(this.config));
     if (!storedToken) {
       this.setSignedOutState();
       return;
@@ -145,7 +315,7 @@ export class ViewerApp {
     this.elements.loginButton.disabled = true;
     try {
       const session = await loader();
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, session.token);
+      window.localStorage.setItem(buildTokenStorageKey(this.config), session.token);
       this.session = session;
       this.elements.logoutButton.hidden = false;
       this.elements.loginForm.hidden = true;
@@ -203,7 +373,7 @@ export class ViewerApp {
     this.refreshInFlight = false;
     this.refreshCooldownUntil = 0;
     this.clearRefreshCooldownTimer();
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(buildTokenStorageKey(this.config));
     this.session = null;
     this.elements.logoutButton.hidden = true;
     this.elements.loginForm.hidden = false;

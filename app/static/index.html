@@ -21,6 +21,26 @@
               </p>
             </div>
 
+            <div class="panel server-panel">
+              <p class="eyebrow">Server</p>
+              <label class="server-select-label" for="server-select">Environment</label>
+              <select id="server-select" class="server-select">
+                <option value="stable">Stable</option>
+                <option value="local">Local</option>
+                <option value="custom">Custom</option>
+              </select>
+              <div id="server-custom-fields" class="server-custom-fields" hidden>
+                <label class="server-custom-field server-custom-url" for="server-host-input">
+                  <span>IP / URL</span>
+                  <input id="server-host-input" type="text" placeholder="127.0.0.1">
+                </label>
+                <label class="server-custom-field server-custom-port" for="server-port-input">
+                  <span>Port</span>
+                  <input id="server-port-input" type="number" min="1" max="65535" inputmode="numeric" value="3001">
+                </label>
+              </div>
+            </div>
+
             <div class="panel session-panel">
               <div class="session-header">
                 <div>

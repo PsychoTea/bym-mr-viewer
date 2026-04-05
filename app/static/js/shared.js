@@ -1,5 +1,6 @@
 ﻿export const TOKEN_STORAGE_KEY = "bym-mr-viewer-token";
 export const SESSION_CACHE_DB_NAME = "bym-mr-viewer-session-cache";
+export const SERVER_SELECTION_STORAGE_KEY = "bym-mr-viewer-server-selection";
 export const SESSION_CACHE_STORE_NAME = "entries";
 export const SESSION_CACHE_SESSION_KEY = "bym-mr-viewer-session-id";
 export const FULL_MAP_CACHE_VERSION = 1;
@@ -9,6 +10,11 @@ export const DEFAULT_VIEWER_CONFIG = Object.freeze({
   bymBaseUrl: "http://localhost:3001",
   cdnBaseUrl: "http://localhost:3001",
   apiVersion: "v1.5.4-beta",
+});
+export const STABLE_VIEWER_CONFIG = Object.freeze({
+  bymBaseUrl: "https://server.bymrefitted.com",
+  cdnBaseUrl: "https://cdn.bymrefitted.com",
+  apiVersion: DEFAULT_VIEWER_CONFIG.apiVersion,
 });
 
 export const MR3 = {
@@ -177,20 +183,37 @@ export function getViewerConfig() {
     return getViewerConfig.cached;
   }
 
+  getViewerConfig.cached = getLocalViewerConfig();
+
+  return getViewerConfig.cached;
+}
+
+export function setViewerConfig(config) {
+  getViewerConfig.cached = normalizeViewerConfig(config);
+  return getViewerConfig.cached;
+}
+
+export function getLocalViewerConfig() {
   const runtimeConfig =
     typeof window !== "undefined" && typeof window.BYM_MR_VIEWER_CONFIG === "object"
       ? window.BYM_MR_VIEWER_CONFIG
       : {};
 
-  getViewerConfig.cached = {
-    bymBaseUrl: normalizeBaseUrl(runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.bymBaseUrl),
-    cdnBaseUrl: normalizeBaseUrl(
-      runtimeConfig.cdnBaseUrl || runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.cdnBaseUrl,
-    ),
-    apiVersion: normalizeApiVersion(runtimeConfig.apiVersion || DEFAULT_VIEWER_CONFIG.apiVersion),
-  };
+  return normalizeViewerConfig({
+    bymBaseUrl: runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.bymBaseUrl,
+    cdnBaseUrl: runtimeConfig.cdnBaseUrl || runtimeConfig.bymBaseUrl || DEFAULT_VIEWER_CONFIG.cdnBaseUrl,
+    apiVersion: runtimeConfig.apiVersion || DEFAULT_VIEWER_CONFIG.apiVersion,
+  });
+}
 
-  return getViewerConfig.cached;
+export function normalizeViewerConfig(config) {
+  return {
+    bymBaseUrl: normalizeBaseUrl(config?.bymBaseUrl || DEFAULT_VIEWER_CONFIG.bymBaseUrl),
+    cdnBaseUrl: normalizeBaseUrl(
+      config?.cdnBaseUrl || config?.bymBaseUrl || DEFAULT_VIEWER_CONFIG.cdnBaseUrl,
+    ),
+    apiVersion: normalizeApiVersion(config?.apiVersion || DEFAULT_VIEWER_CONFIG.apiVersion),
+  };
 }
 
 export function buildBymUrl(path, query = null, config = getViewerConfig()) {
@@ -223,6 +246,10 @@ export function buildSessionPayload(loginResponse, map) {
 
 export function normalizeBaseUrl(value) {
   return String(value || "").replace(/\/+$/, "");
+}
+
+export function buildTokenStorageKey(config) {
+  return `${TOKEN_STORAGE_KEY}:${normalizeBaseUrl(config?.bymBaseUrl || DEFAULT_VIEWER_CONFIG.bymBaseUrl)}`;
 }
 
 export function normalizeApiVersion(value) {
@@ -368,10 +395,11 @@ export function describeTribe(cell) {
   return TRIBE_FILTER_OPTIONS.find((option) => option.key === tribeKey)?.label || "Unknown";
 }
 
-export function buildFullMapCacheKey(userId, mapMeta) {
+export function buildFullMapCacheKey(userId, mapMeta, serverBaseUrl = "") {
   const sessionId = getSessionCacheSessionId();
   const width = Number(mapMeta?.width || MR3.mapWidth);
   const height = Number(mapMeta?.height || MR3.mapHeight);
+  const serverKey = normalizeBaseUrl(serverBaseUrl || "local");
   const worldId = String(
     mapMeta?.worldid ||
       mapMeta?.worldId ||
@@ -379,7 +407,7 @@ export function buildFullMapCacheKey(userId, mapMeta) {
       mapMeta?.uuid ||
       `${width}x${height}`,
   );
-  return `${FULL_MAP_CACHE_KEY_PREFIX}:${sessionId}:${userId}:${worldId}:${width}x${height}`;
+  return `${FULL_MAP_CACHE_KEY_PREFIX}:${sessionId}:${serverKey}:${userId}:${worldId}:${width}x${height}`;
 }
 
 let sessionCacheDbPromise = null;
