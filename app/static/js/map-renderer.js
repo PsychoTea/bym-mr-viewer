@@ -110,6 +110,77 @@ export class MapRenderer {
     this.render();
   }
 
+  async refreshMapData() {
+    if (!this.token || this.fullMapPreloading) {
+      return;
+    }
+
+    const snapshot = {
+      cellCache: new Map(this.cellCache),
+      homeCellKey: this.homeCellKey,
+      hoveredCellKey: this.hoveredCellKey,
+      selectedCellKey: this.selectedCellKey,
+      offsetX: this.offsetX,
+      offsetY: this.offsetY,
+      zoom: this.zoom,
+      fullMapLoaded: this.fullMapLoaded,
+    };
+
+    try {
+      this.cancelAnimations();
+      this.fullMapLoaded = false;
+      this.fullMapPreloading = false;
+      this.cellCache.clear();
+      this.setOverlay("Refreshing live MR3 data...");
+      this.setCoordinatesDisplay(null);
+
+      const initResponse = await this.api.getMapInit(this.token);
+      this.mergeCells(initResponse.celldata || []);
+
+      const homeCell = (initResponse.celldata || [])[0] || null;
+      this.homeCellKey = homeCell ? cellKey(homeCell.x, homeCell.y) : snapshot.homeCellKey;
+      this.hoveredCellKey = null;
+      this.selectedCellKey = snapshot.selectedCellKey;
+      this.offsetX = snapshot.offsetX;
+      this.offsetY = snapshot.offsetY;
+      this.zoom = snapshot.zoom;
+      this.clampOffset();
+      this.onHoverCell(null);
+      this.onSelectCell(this.getSelectedCell());
+      this.render();
+
+      await this.preloadEntireMap("Refreshing world map");
+
+      this.hoveredCellKey =
+        snapshot.hoveredCellKey && this.cellCache.has(snapshot.hoveredCellKey)
+          ? snapshot.hoveredCellKey
+          : null;
+      this.selectedCellKey =
+        snapshot.selectedCellKey && this.cellCache.has(snapshot.selectedCellKey)
+          ? snapshot.selectedCellKey
+          : null;
+      this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);
+      this.onSelectCell(this.getSelectedCell());
+      this.setOverlay("");
+      this.render();
+    } catch (error) {
+      this.cellCache = snapshot.cellCache;
+      this.homeCellKey = snapshot.homeCellKey;
+      this.hoveredCellKey = snapshot.hoveredCellKey;
+      this.selectedCellKey = snapshot.selectedCellKey;
+      this.offsetX = snapshot.offsetX;
+      this.offsetY = snapshot.offsetY;
+      this.zoom = snapshot.zoom;
+      this.fullMapLoaded = snapshot.fullMapLoaded;
+      this.fullMapPreloading = false;
+      this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);
+      this.onSelectCell(this.getSelectedCell());
+      this.setOverlay("");
+      this.render();
+      throw error;
+    }
+  }
+
   reset(message) {
     this.cancelAnimations();
     this.token = null;
@@ -279,7 +350,8 @@ export class MapRenderer {
   }
 
   setOverlay(message) {
-    this.overlayEl.textContent = message;
+    this.overlayEl.dataset.message = message || "";
+    this.overlayEl.textContent = "";
     this.overlayEl.hidden = !message;
   }
 
@@ -490,7 +562,7 @@ export class MapRenderer {
     });
   }
 
-  async preloadEntireMap() {
+  async preloadEntireMap(progressLabel = "Loading full world map") {
     if (!this.token || this.fullMapPreloading || this.fullMapLoaded) {
       return;
     }
@@ -503,7 +575,7 @@ export class MapRenderer {
     let completedCells = 0;
     let completedChunks = 0;
 
-    this.setOverlay("Preloading full world map (0%)...");
+    this.setOverlay(`${progressLabel} (0%)...`);
 
     const runWorker = async () => {
       while (nextChunkIndex < totalChunks) {
@@ -521,7 +593,7 @@ export class MapRenderer {
         completedCells += cellIds.length;
         completedChunks += 1;
         const percent = Math.min(100, Math.round((completedCells / totalCells) * 100));
-        this.setOverlay(`Preloading full world map (${percent}%)...`);
+        this.setOverlay(`${progressLabel} (${percent}%)...`);
 
         if (completedChunks === 1 || completedChunks % 4 === 0 || completedChunks === totalChunks) {
           this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);

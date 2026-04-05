@@ -84,14 +84,45 @@ body {
 
 .map-overlay {
   position: absolute;
-  inset: auto auto 72px 18px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(14, 12, 10, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--muted);
-  max-width: min(520px, calc(100% - 36px));
-  z-index: 2;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(18, 18, 18, 0.48);
+  backdrop-filter: grayscale(0.35) blur(2px);
+  color: var(--text);
+  text-align: center;
+  font-size: clamp(20px, 2.1vw, 30px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  z-index: 6;
+}
+
+.map-overlay[hidden] {
+  display: none !important;
+}
+
+.map-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.08), transparent 58%),
+    rgba(14, 12, 10, 0.26);
+}
+
+.map-overlay::after {
+  content: attr(data-message);
+  position: relative;
+  display: block;
+  width: min(640px, calc(100% - 48px));
+  padding: 28px 32px;
+  border-radius: 22px;
+  background: rgba(56, 56, 56, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.38);
 }
 
 .map-coordinates {
@@ -217,7 +248,7 @@ h2 {
 
 .map-filter-anchor {
   position: relative;
-  width: 156px;
+  width: 200px;
   padding: 14px;
 }
 
@@ -229,6 +260,7 @@ h2 {
 }
 
 .tool-toggle-button {
+  width: 100%;
   padding: 8px 12px;
   white-space: nowrap;
 }
@@ -437,6 +469,7 @@ h2 {
 }
 
 .map-control-button {
+  position: relative;
   width: 48px;
   height: 48px;
   border-radius: 14px;
@@ -456,6 +489,38 @@ h2 {
   fill: currentColor;
   display: block;
   margin: 0 auto;
+}
+
+.map-control-button.loading svg {
+  animation: map-control-spin 1s linear infinite;
+}
+
+.map-control-button[data-cooldown]:not([data-cooldown=""])::after {
+  content: attr(data-cooldown);
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(242, 199, 107, 0.94);
+  color: #24160a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+@keyframes map-control-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .world-list,

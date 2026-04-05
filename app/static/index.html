@@ -88,7 +88,7 @@
             </div>
 
             <div class="map-filter-anchor" aria-label="Map filters">
-              <p class="eyebrow">Filters</p>
+              <p class="eyebrow">Base Filters</p>
               <button
                 id="filter-toggle-button"
                 class="secondary-button tool-toggle-button"
@@ -96,14 +96,14 @@
                 aria-expanded="false"
                 disabled
               >
-                Wild Bases
+                Filter Bases
               </button>
               <p id="filter-status" class="muted filter-status">Sign in to enable filters.</p>
               <div id="filter-menu" class="filter-menu" hidden>
                 <div class="filter-menu-header">
                   <div>
                     <p class="eyebrow">Filter</p>
-                    <h2>Wild Bases</h2>
+                    <h2>Base Filters</h2>
                   </div>
                   <button id="filter-clear-button" class="secondary-button" type="button">Clear</button>
                 </div>
@@ -123,8 +123,24 @@
             </div>
           </div>
           <div id="map-coordinates" class="map-coordinates" hidden>Cell -, -</div>
-          <div id="map-overlay" class="map-overlay">Sign in to load live MR3 data.</div>
+          <div
+            id="map-overlay"
+            class="map-overlay"
+            data-message="Sign in to load live MR3 data."
+          ></div>
           <div class="map-controls" aria-label="Map controls">
+            <button
+              id="refresh-button"
+              class="icon-button map-control-button"
+              type="button"
+              aria-label="Refresh world map"
+              title="Refresh world map"
+              disabled
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5a7 7 0 1 1-6.65 9.18 1 1 0 1 1 1.9-.62A5 5 0 1 0 8 8.58V11a1 1 0 0 1-1.7.71l-3-3a1 1 0 0 1 0-1.42l3-3A1 1 0 0 1 8 5v1.46A6.96 6.96 0 0 1 12 5Z" />
+              </svg>
+            </button>
             <button id="find-home-button" class="icon-button map-control-button" type="button" aria-label="Find home base" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3 3 10.5V21h6v-5h6v5h6V10.5L12 3Z" />

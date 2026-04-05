@@ -68,9 +68,8 @@ Optional environment variables:
 
 ## TODO
 
-- Add a refresh control to invalidate the session map cache and pull a fresh full world snapshot.
 - Make the left pane collapsible after login.
-- Add tooltips for the home and zoom controls.
+- Add tooltips for the home, refresh, and zoom controls.
 - Add a server selector for switching between demo, live, or custom BYM hosts.
 - Add a favicon.
 - Add a credits/footer panel with issue reporting info.

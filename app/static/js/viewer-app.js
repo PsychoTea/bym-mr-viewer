@@ -16,6 +16,9 @@ import {
   formatNumber,
   hasActiveBaseFilterState,
 } from "./shared.js";
+
+const MAP_REFRESH_COOLDOWN_MS = 30_000;
+
 export class ViewerApp {
   constructor() {
     this.api = new ApiClient();
@@ -32,6 +35,9 @@ export class ViewerApp {
     this.filterState = createEmptyBaseFilter();
     this.availableFilterLevels = [];
     this.filterMenuOpen = false;
+    this.refreshInFlight = false;
+    this.refreshCooldownUntil = 0;
+    this.refreshCooldownTimer = 0;
 
     this.elements = {
       mapSearchPanel: document.querySelector(".map-search-panel"),
@@ -61,6 +67,7 @@ export class ViewerApp {
       filterTypeOptions: document.getElementById("filter-type-options"),
       filterTribeOptions: document.getElementById("filter-tribe-options"),
       filterLevelOptions: document.getElementById("filter-level-options"),
+      refreshButton: document.getElementById("refresh-button"),
       findHomeButton: document.getElementById("find-home-button"),
       zoomInButton: document.getElementById("zoom-in-button"),
       zoomOutButton: document.getElementById("zoom-out-button"),
@@ -96,6 +103,7 @@ export class ViewerApp {
   bindEvents() {
     this.elements.loginForm.addEventListener("submit", (event) => this.handleLogin(event));
     this.elements.logoutButton.addEventListener("click", () => this.handleLogout());
+    this.elements.refreshButton.addEventListener("click", () => this.handleRefreshMap());
     this.elements.findHomeButton.addEventListener("click", () => this.renderer.focusHome());
     this.elements.zoomInButton.addEventListener("click", () => this.renderer.zoomBy(1.18, true));
     this.elements.zoomOutButton.addEventListener("click", () => this.renderer.zoomBy(1 / 1.18, true));
@@ -139,13 +147,15 @@ export class ViewerApp {
       this.elements.loginForm.hidden = true;
       this.elements.sessionPanel.classList.add("signed-in");
       this.elements.sessionName.textContent = session.user.username || "Signed in";
-      this.elements.findHomeButton.disabled = false;
+      this.refreshCooldownUntil = 0;
+      this.clearRefreshCooldownTimer();
       this.setSessionStatus("");
       this.setSearchEnabled(false, "Loading full world map...");
       this.setFilterEnabled(false);
       await this.renderer.bootstrap(session);
       this.rebuildSearchIndex();
       this.rebuildFilterOptions();
+      this.updateRefreshButtonState();
       this.setSearchEnabled(
         true,
         this.searchEntries.length
@@ -179,26 +189,64 @@ export class ViewerApp {
       this.setSessionStatus(error.message || "Authentication failed.", true);
       this.setSearchEnabled(false, "Sign in to search the loaded world map.");
       this.setFilterEnabled(false);
+      this.updateRefreshButtonState();
       this.renderer.reset("Sign in to load live MR3 data.");
     }
   }
 
   handleLogout(message = "Signed out.") {
+    this.refreshInFlight = false;
+    this.refreshCooldownUntil = 0;
+    this.clearRefreshCooldownTimer();
     window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     this.session = null;
     this.elements.logoutButton.hidden = true;
     this.elements.loginForm.hidden = false;
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
-    this.elements.findHomeButton.disabled = true;
     this.elements.sessionName.textContent = "Signed out";
     this.setSessionStatus(message);
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");
     this.setFilterEnabled(false);
+    this.updateRefreshButtonState();
     this.renderer.reset("Sign in to load live MR3 data.");
     this.selectedCell = null;
     this.hoveredCell = null;
     this.renderDetails();
+  }
+
+  async handleRefreshMap() {
+    if (!this.session || !this.renderer || this.refreshInFlight) {
+      return;
+    }
+
+    if (Date.now() < this.refreshCooldownUntil) {
+      this.updateRefreshButtonState();
+      return;
+    }
+
+    this.refreshInFlight = true;
+    this.updateRefreshButtonState();
+
+    try {
+      await this.renderer.refreshMapData();
+      this.rebuildSearchIndex();
+      this.rebuildFilterOptions(true);
+      this.renderDetails();
+      this.startRefreshCooldown();
+    } catch (error) {
+      console.error(error);
+      const sessionToken = this.session?.token || null;
+      this.renderer.setOverlay(error.message || "Failed to refresh world map.");
+      window.setTimeout(() => {
+        if (this.session?.token === sessionToken && !this.refreshInFlight) {
+          this.renderer?.setOverlay("");
+        }
+      }, 2200);
+    } finally {
+      this.refreshInFlight = false;
+      this.updateRefreshButtonState();
+    }
   }
 
   async loadWorlds() {
@@ -347,9 +395,19 @@ export class ViewerApp {
     this.hideSearchResults();
   }
 
-  rebuildFilterOptions() {
-    this.filterState = createEmptyBaseFilter();
+  rebuildFilterOptions(preserveState = false) {
+    if (!preserveState) {
+      this.filterState = createEmptyBaseFilter();
+    }
+
     this.availableFilterLevels = this.renderer ? this.renderer.getAvailableWildBaseLevels() : [];
+    if (preserveState) {
+      const levelSet = new Set(this.availableFilterLevels);
+      this.filterState = {
+        ...this.filterState,
+        levels: this.filterState.levels.filter((level) => levelSet.has(level)),
+      };
+    }
     this.renderFilterOptions();
     this.applyFilters();
   }
@@ -489,16 +547,30 @@ export class ViewerApp {
   syncFilterButtonState() {
     const isActive = this.filterMenuOpen || hasActiveBaseFilterState(this.filterState);
     this.elements.filterToggleButton.classList.toggle("active", isActive);
+
+    if (this.elements.filterToggleButton.disabled) {
+      this.elements.filterToggleButton.textContent = "Filter Bases";
+      return;
+    }
+
+    if (this.filterMenuOpen) {
+      this.elements.filterToggleButton.textContent = "Hide Filters";
+      return;
+    }
+
+    this.elements.filterToggleButton.textContent = hasActiveBaseFilterState(this.filterState)
+      ? "Filters Active"
+      : "Filter Bases";
   }
 
   updateFilterStatus(isEnabled) {
     if (!isEnabled) {
-      this.elements.filterStatus.textContent = "Sign in to enable filters.";
+      this.elements.filterStatus.textContent = "Sign in to enable base filters.";
       return;
     }
 
     if (!hasActiveBaseFilterState(this.filterState)) {
-      this.elements.filterStatus.textContent = "No filters active.";
+      this.elements.filterStatus.textContent = "Showing all visible bases.";
       return;
     }
 
@@ -522,6 +594,64 @@ export class ViewerApp {
     }
 
     this.elements.filterStatus.textContent = segments.join(" | ");
+  }
+
+  updateRefreshButtonState() {
+    const button = this.elements.refreshButton;
+    const hasSession = Boolean(this.session);
+    const cooldownSeconds = Math.max(0, Math.ceil((this.refreshCooldownUntil - Date.now()) / 1000));
+    const isCoolingDown = cooldownSeconds > 0;
+
+    button.disabled = !hasSession || this.refreshInFlight || isCoolingDown;
+    button.classList.toggle("loading", this.refreshInFlight);
+    button.dataset.cooldown = isCoolingDown ? String(cooldownSeconds) : "";
+
+    if (!hasSession) {
+      button.title = "Sign in to refresh the world map";
+      button.setAttribute("aria-label", "Sign in to refresh the world map");
+      this.elements.findHomeButton.disabled = true;
+      return;
+    }
+
+    this.elements.findHomeButton.disabled = false;
+
+    if (this.refreshInFlight) {
+      button.title = "Refreshing world map...";
+      button.setAttribute("aria-label", "Refreshing world map");
+      return;
+    }
+
+    if (isCoolingDown) {
+      button.title = `Refresh available in ${cooldownSeconds}s`;
+      button.setAttribute("aria-label", `Refresh available in ${cooldownSeconds} seconds`);
+      return;
+    }
+
+    button.title = "Refresh world map";
+    button.setAttribute("aria-label", "Refresh world map");
+  }
+
+  startRefreshCooldown() {
+    this.refreshCooldownUntil = Date.now() + MAP_REFRESH_COOLDOWN_MS;
+    this.clearRefreshCooldownTimer();
+    this.updateRefreshButtonState();
+    this.refreshCooldownTimer = window.setInterval(() => {
+      if (Date.now() >= this.refreshCooldownUntil) {
+        this.refreshCooldownUntil = 0;
+        this.clearRefreshCooldownTimer();
+      }
+
+      this.updateRefreshButtonState();
+    }, 1000);
+  }
+
+  clearRefreshCooldownTimer() {
+    if (!this.refreshCooldownTimer) {
+      return;
+    }
+
+    window.clearInterval(this.refreshCooldownTimer);
+    this.refreshCooldownTimer = 0;
   }
 
   handleSearchInput() {
@@ -676,11 +806,11 @@ export class ViewerApp {
     this.elements.loginForm.hidden = false;
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
-    this.elements.findHomeButton.disabled = true;
     this.elements.sessionName.textContent = "Signed out";
     this.setSessionStatus("Sign in with your own BYM credentials.");
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");
     this.setFilterEnabled(false);
+    this.updateRefreshButtonState();
     this.renderer?.reset("Sign in to load live MR3 data.");
     this.renderDetails();
   }
