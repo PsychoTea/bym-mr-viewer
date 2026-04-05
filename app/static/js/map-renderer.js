@@ -58,6 +58,8 @@ export class MapRenderer {
     this.dragMoved = false;
     this.dragLastPoint = null;
     this.lastPointer = { x: 0, y: 0 };
+    this.viewportWidth = 0;
+    this.viewportHeight = 0;
 
     this.canvas.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
     this.canvas.addEventListener("pointermove", (event) => this.handlePointerMove(event));
@@ -829,6 +831,24 @@ export class MapRenderer {
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
     const dpr = window.devicePixelRatio || 1;
+    const previousWidth = this.viewportWidth;
+    const previousHeight = this.viewportHeight;
+
+    if (
+      this.token &&
+      previousWidth > 0 &&
+      previousHeight > 0 &&
+      (previousWidth !== width || previousHeight !== height)
+    ) {
+      const centerWorldX = this.offsetX + previousWidth / (2 * this.zoom);
+      const centerWorldY = this.offsetY + previousHeight / (2 * this.zoom);
+      this.offsetX = centerWorldX - width / (2 * this.zoom);
+      this.offsetY = centerWorldY - height / (2 * this.zoom);
+      this.clampOffset();
+    }
+
+    this.viewportWidth = width;
+    this.viewportHeight = height;
 
     if (this.canvas.width !== Math.floor(width * dpr) || this.canvas.height !== Math.floor(height * dpr)) {
       this.canvas.width = Math.floor(width * dpr);
