@@ -3,10 +3,10 @@ services:
     build:
       context: .
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8081}:8080"
     environment:
       PORT: 8080
       BYM_BASE_URL: ${BYM_BASE_URL:-http://host.docker.internal:3001}
-      BYM_CDN_BASE_URL: ${BYM_CDN_BASE_URL:-http://host.docker.internal:3001}
+      BYM_CDN_BASE_URL: ${BYM_CDN_BASE_URL:-http://localhost:3001}
       BYM_API_VERSION: ${BYM_API_VERSION:-v1.5.4-beta}
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-15}

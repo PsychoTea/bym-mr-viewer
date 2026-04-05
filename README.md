@@ -22,16 +22,19 @@ Because this viewer must not modify the BYM server, the map canvas can only rend
 docker compose up --build
 ```
 
-The viewer runs on `http://localhost:8080`.
+The viewer runs on `http://localhost:8081` by default.
 
 ## Environment
 
 - `BYM_BASE_URL`: BYM game server base URL used for API calls.
-- `BYM_CDN_BASE_URL`: BYM asset host used for MR3 images. For the demo server this is the same as `BYM_BASE_URL`.
+- `BYM_CDN_BASE_URL`: BYM asset host used for MR3 images. For the demo server this should be browser-reachable, typically `http://localhost:3001`.
 - `BYM_API_VERSION`: API version segment, default `v1.5.4-beta`.
-- `PORT`: Viewer container port, default `8080`.
+- `PORT`: Host port published by Docker compose, default `8081`.
 - `REQUEST_TIMEOUT_SECONDS`: Upstream BYM request timeout.
 
 ## Demo setup
 
-When the BYM demo server is running on the host machine at `localhost:3001`, the default Docker config uses `http://host.docker.internal:3001` so the container can reach it.
+When the BYM demo server is running on the host machine at `localhost:3001`:
+
+- the Python container talks to the API through `http://host.docker.internal:3001`
+- the browser fetches CDN assets from `http://localhost:3001`
