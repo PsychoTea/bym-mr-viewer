@@ -2,7 +2,7 @@
 
 BYM MR Viewer is a browser-based Map Room 3 viewer for Backyard Monsters Refitted. It lets you open the world map outside the game client, browse bases in your current world, search for players, apply filters, and inspect live map data.
 
-## What It Supports
+## Features
 
 - Live Map Room 3 map viewing
 - Stable, local, or custom BYM server selection
@@ -16,8 +16,6 @@ BYM MR Viewer is a browser-based Map Room 3 viewer for Backyard Monsters Refitte
 ## How It Works
 
 The viewer runs entirely in your browser. After you choose a server, it connects directly to that BYM server for sign-in, world data, leaderboards, and map data. Map graphics are loaded from the selected server's CDN.
-
-This repository includes a Python server for local/development use.
 
 ## Credentials and Privacy
 
@@ -35,6 +33,8 @@ The current BYM API only exposes Map Room 3 cell data for the authenticated play
 
 ## Running It Locally
 
+This repository includes a Python server for local/development use.
+
 You need Python 3 installed.
 
 From the project root, run:
@@ -43,7 +43,7 @@ From the project root, run:
 python3 dev_server.py
 ```
 
-Then open:
+Then browser to:
 
 ```text
 http://localhost:8080
@@ -66,4 +66,4 @@ python dev_server.py
 
 ## Bug Reports and Feature Requests
 
-For bug reports and feature requests, please open an issue on our [issue tracker](https://github.com/PsychoTea/bym-mr-viewer).
+For bug reports and feature requests, please open an issue on our [issue tracker](https://github.com/PsychoTea/bym-mr-viewer/issues).
