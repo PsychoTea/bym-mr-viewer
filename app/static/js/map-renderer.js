@@ -24,6 +24,9 @@
   sessionCacheSet,
   vertexKey,
 } from "./shared.js";
+
+const WHEEL_ZOOM_MULTIPLIER = 1.14;
+const LABEL_RENDER_ZOOM_MIN = 0.82 / (WHEEL_ZOOM_MULTIPLIER ** 2);
 export class MapRenderer {
   constructor({ canvas, overlayEl, coordsEl, statusEl, assets, api, onHoverCell, onSelectCell }) {
     this.canvas = canvas;
@@ -759,7 +762,8 @@ export class MapRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const localX = event.clientX - rect.left;
     const localY = event.clientY - rect.top;
-    const multiplier = event.deltaY < 0 ? 1.14 : 1 / 1.14;
+    const multiplier =
+      event.deltaY < 0 ? WHEEL_ZOOM_MULTIPLIER : 1 / WHEEL_ZOOM_MULTIPLIER;
     this.setZoom(this.zoom * multiplier, localX, localY);
   }
 
@@ -1101,7 +1105,7 @@ export class MapRenderer {
       this.drawDamageBar(cell, screenX, screenY);
     }
 
-    if (this.zoom >= 0.82 && cell.b !== MR3.yardTypes.fortification) {
+    if (this.zoom >= LABEL_RENDER_ZOOM_MIN && cell.b !== MR3.yardTypes.fortification) {
       this.drawLabel(cell, screenX, screenY);
     }
   }
