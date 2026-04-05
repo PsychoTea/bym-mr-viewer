@@ -9,93 +9,92 @@
   </head>
   <body>
     <div id="app">
-      <aside class="sidebar">
-        <div class="panel brand-panel">
-          <p class="eyebrow">Backyard Monsters Refitted</p>
-          <h1>Map Room 3 Viewer</h1>
-          <p class="muted">
-            A browser-based Map Room 3 viewer for Backyard Monsters.
-          </p>
-        </div>
-
-        <div class="panel session-panel">
-          <div class="session-header">
-            <div>
-              <p class="eyebrow">Session</p>
-              <h2 id="session-name">Signed out</h2>
-            </div>
-            <button id="logout-button" class="secondary-button" type="button" hidden>Log out</button>
-          </div>
-
-          <form id="login-form" class="login-form">
-            <label>
-              <span>Email</span>
-              <input id="email-input" name="email" type="email" autocomplete="username" required>
-            </label>
-            <label>
-              <span>Password</span>
-              <input id="password-input" name="password" type="password" autocomplete="current-password" required>
-            </label>
-            <button id="login-button" class="primary-button" type="submit">Sign in</button>
-          </form>
-
-          <p id="session-status" class="muted">Sign in with your own BYM credentials.</p>
-        </div>
-
-        <div class="panel">
-          <p class="eyebrow">Worlds</p>
-          <h2>MR3 Worlds</h2>
-          <p class="notice">
-            The current BYM API only exposes MR3 cells for the authenticated player's current world.
-            Selecting a world updates metadata and leaderboards only.
-          </p>
-          <div id="world-list" class="world-list"></div>
-        </div>
-
-        <div class="panel">
-          <p class="eyebrow">Leaderboard</p>
-          <h2 id="leaderboard-title">No world selected</h2>
-          <div id="leaderboard-list" class="leaderboard-list"></div>
-        </div>
-
-        <div class="panel details-panel">
-          <p class="eyebrow">Cell</p>
-          <h2 id="details-title">No selection</h2>
-          <div id="details-content" class="details-content">
-            Hover a visible MR3 cell to inspect it.
-          </div>
-        </div>
-
-        <div class="panel credits-panel">
-          <p class="muted credits-copy">
-            Made with &lt;3 by sparkey and GPT-5.4 For issues &amp; bug reports, please use the
-            <a
-              class="credits-link"
-              href="https://github.com/PsychoTea/bym-mr-viewer/issues"
-              target="_blank"
-              rel="noreferrer"
-            >GitHub tracker</a>.
-          </p>
-        </div>
-      </aside>
-
-      <button
-        id="sidebar-toggle-button"
-        class="sidebar-toggle-button"
-        type="button"
-        aria-label="Hide sidebar"
-        aria-expanded="true"
-        title="Hide sidebar"
-        hidden
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15.5 4.5 8 12l7.5 7.5-2.1 2.1L3.8 12l9.6-9.6 2.1 2.1Z" />
-        </svg>
-      </button>
-
       <main class="map-shell">
         <section id="map-panel" class="map-panel panel">
           <canvas id="map-canvas"></canvas>
+          <aside class="sidebar">
+            <div class="panel brand-panel">
+              <p class="eyebrow">Backyard Monsters Refitted</p>
+              <h1>Map Room 3 Viewer</h1>
+              <p class="muted">
+                A browser-based Map Room 3 viewer for Backyard Monsters.
+              </p>
+            </div>
+
+            <div class="panel session-panel">
+              <div class="session-header">
+                <div>
+                  <p class="eyebrow">Session</p>
+                  <h2 id="session-name">Signed out</h2>
+                </div>
+                <button id="logout-button" class="secondary-button" type="button" hidden>Log out</button>
+              </div>
+
+              <form id="login-form" class="login-form">
+                <label>
+                  <span>Email</span>
+                  <input id="email-input" name="email" type="email" autocomplete="username" required>
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input id="password-input" name="password" type="password" autocomplete="current-password" required>
+                </label>
+                <button id="login-button" class="primary-button" type="submit">Sign in</button>
+              </form>
+
+              <p id="session-status" class="muted">Sign in with your own BYM credentials.</p>
+            </div>
+
+            <div class="panel">
+              <p class="eyebrow">Worlds</p>
+              <h2>MR3 Worlds</h2>
+              <p class="notice">
+                The current BYM API only exposes MR3 cells for the authenticated player's current world.
+                Selecting a world updates metadata and leaderboards only.
+              </p>
+              <div id="world-list" class="world-list"></div>
+            </div>
+
+            <div class="panel">
+              <p class="eyebrow">Leaderboard</p>
+              <h2 id="leaderboard-title">No world selected</h2>
+              <div id="leaderboard-list" class="leaderboard-list"></div>
+            </div>
+
+            <div class="panel details-panel">
+              <p class="eyebrow">Cell</p>
+              <h2 id="details-title">No selection</h2>
+              <div id="details-content" class="details-content">
+                Hover a visible MR3 cell to inspect it.
+              </div>
+            </div>
+
+            <div class="panel credits-panel">
+              <p class="muted credits-copy">
+                Made with &lt;3 by sparkey and GPT-5.4 For issues &amp; bug reports, please use the
+                <a
+                  class="credits-link"
+                  href="https://github.com/PsychoTea/bym-mr-viewer/issues"
+                  target="_blank"
+                  rel="noreferrer"
+                >GitHub tracker</a>.
+              </p>
+            </div>
+          </aside>
+
+          <button
+            id="sidebar-toggle-button"
+            class="sidebar-toggle-button"
+            type="button"
+            aria-label="Hide sidebar"
+            aria-expanded="true"
+            title="Hide sidebar"
+            hidden
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15.5 4.5 8 12l7.5 7.5-2.1 2.1L3.8 12l9.6-9.6 2.1 2.1Z" />
+            </svg>
+          </button>
           <div class="map-tool-bar">
             <div class="map-search-panel" aria-label="Map search">
               <p class="eyebrow">Search</p>
