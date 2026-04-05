@@ -63,6 +63,7 @@ export class ViewerApp {
       loginButton: document.getElementById("login-button"),
       logoutButton: document.getElementById("logout-button"),
       sessionName: document.getElementById("session-name"),
+      sessionWorld: document.getElementById("session-world"),
       sessionStatus: document.getElementById("session-status"),
       worldList: document.getElementById("world-list"),
       leaderboardTitle: document.getElementById("leaderboard-title"),
@@ -338,6 +339,7 @@ export class ViewerApp {
       this.elements.loginForm.hidden = true;
       this.elements.sessionPanel.classList.add("signed-in");
       this.elements.sessionName.textContent = session.user.username || "Signed in";
+      this.updateSessionWorld(session);
       this.setSidebarToggleVisible(true);
       this.refreshCooldownUntil = 0;
       this.clearRefreshCooldownTimer();
@@ -397,6 +399,8 @@ export class ViewerApp {
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
     this.elements.sessionName.textContent = "Signed out";
+    this.elements.sessionWorld.hidden = true;
+    this.elements.sessionWorld.textContent = "";
     this.setSidebarToggleVisible(false);
     this.setSessionStatus(message);
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");
@@ -1021,12 +1025,27 @@ export class ViewerApp {
     this.elements.sessionStatus.style.color = isError ? "#ffb59f" : "";
   }
 
+  updateSessionWorld(session) {
+    const worldId = String(
+      session?.map?.worldid ||
+      session?.map?.worldId ||
+      session?.map?.wid ||
+      "",
+    );
+    const world = this.worlds.find((candidate) => String(candidate.uuid) === worldId) || null;
+    const worldLabel = world?.name || (worldId ? `World ${worldId}` : "");
+    this.elements.sessionWorld.hidden = !worldLabel;
+    this.elements.sessionWorld.textContent = worldLabel;
+  }
+
   setSignedOutState() {
     this.elements.logoutButton.hidden = true;
     this.elements.loginForm.hidden = false;
     this.elements.sessionPanel.classList.remove("signed-in");
     this.elements.loginButton.disabled = false;
     this.elements.sessionName.textContent = "Signed out";
+    this.elements.sessionWorld.hidden = true;
+    this.elements.sessionWorld.textContent = "";
     this.setSidebarToggleVisible(false);
     this.setSessionStatus("Sign in with your own BYM credentials.");
     this.setSearchEnabled(false, "Sign in to search the loaded world map.");

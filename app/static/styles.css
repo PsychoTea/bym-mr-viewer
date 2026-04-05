@@ -304,6 +304,12 @@ h2 {
   line-height: 1.4;
 }
 
+.session-world {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .login-form {
   margin-top: 14px;
   display: grid;
