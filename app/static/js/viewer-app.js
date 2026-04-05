@@ -428,8 +428,10 @@ export class ViewerApp {
       this.hideSearchResults();
     }
 
-    this.elements.searchStatus.hidden = !message;
-    this.elements.searchStatus.textContent = message;
+    if (this.elements.searchStatus) {
+      this.elements.searchStatus.hidden = !message;
+      this.elements.searchStatus.textContent = message;
+    }
   }
 
   setFilterEnabled(enabled) {
@@ -570,6 +572,10 @@ export class ViewerApp {
   }
 
   updateFilterStatus(isEnabled) {
+    if (!this.elements.filterStatus) {
+      return;
+    }
+
     if (!isEnabled) {
       this.elements.filterStatus.textContent = "Sign in to enable base filters.";
       return;
@@ -689,10 +695,6 @@ export class ViewerApp {
       this.searchMatches = [];
       this.searchActiveIndex = -1;
       this.renderSearchResults();
-      this.elements.searchStatus.hidden = false;
-      this.elements.searchStatus.textContent = this.searchEntries.length
-        ? `${formatNumber(this.searchEntries.length)} player bases indexed.`
-        : "No searchable player bases found.";
       return;
     }
 
@@ -726,10 +728,6 @@ export class ViewerApp {
     this.searchMatches = rankedMatches.slice(0, SEARCH_RESULT_LIMIT);
     this.searchActiveIndex = this.searchMatches.length ? 0 : -1;
     this.renderSearchResults();
-    this.elements.searchStatus.hidden = false;
-    this.elements.searchStatus.textContent = rankedMatches.length
-      ? `${formatNumber(rankedMatches.length)} match${rankedMatches.length === 1 ? "" : "es"} found.`
-      : "No player bases match that username.";
   }
 
   handleSearchKeyDown(event) {
@@ -819,8 +817,6 @@ export class ViewerApp {
   selectSearchResult(entry) {
     this.elements.searchInput.value = entry.username;
     this.hideSearchResults();
-    this.elements.searchStatus.hidden = false;
-    this.elements.searchStatus.textContent = `${entry.username} - ${formatDistance(entry.distance)}`;
     this.renderer.focusCell(entry.cell, { animate: true });
   }
 

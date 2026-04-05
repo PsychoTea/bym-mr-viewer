@@ -297,6 +297,9 @@ h2 {
 
 .map-search-panel,
 .map-filter-anchor {
+  display: grid;
+  align-content: start;
+  gap: 10px;
   padding: 14px;
   border-radius: 16px;
   background: rgba(18, 13, 10, 0.86);
@@ -313,7 +316,6 @@ h2 {
 .map-filter-anchor {
   position: relative;
   width: 200px;
-  padding: 14px;
 }
 
 .filter-menu-header {
@@ -336,7 +338,7 @@ h2 {
 
 .search-shell {
   position: relative;
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .search-input {
@@ -370,18 +372,6 @@ h2 {
   overflow-y: auto;
   overscroll-behavior: contain;
   z-index: 6;
-}
-
-.search-status {
-  margin-top: 8px;
-  font-size: 12px;
-}
-
-.filter-status {
-  margin-top: 8px;
-  min-height: 32px;
-  font-size: 12px;
-  line-height: 1.35;
 }
 
 .filter-menu {
