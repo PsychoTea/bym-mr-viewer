@@ -1,75 +1,69 @@
 # BYM MR Viewer
 
-A static Map Room 3 viewer for Backyard Monsters Refitted.
+BYM MR Viewer is a browser-based Map Room 3 viewer for Backyard Monsters Refitted. It lets you open the world map outside the game client, browse bases in your current world, search for players, apply filters, and inspect live map data.
 
-The viewer now runs entirely in the browser. It talks directly to the BYM game server for auth, world metadata, and live MR3 cell data, and it loads map art straight from the BYM CDN. The only Python left is a tiny static-file host for local development.
+## What It Supports
 
-## Architecture
+- Live Map Room 3 map viewing
+- Stable, local, or custom BYM server selection
+- Per-user sign-in with your own BYM account
+- Search for player bases by username
+- Filters for wild bases, tribes, levels, and player ownership
+- Leaderboards and world metadata
+- Base details including range and outpost counts
+- Refreshing the current world snapshot on demand
 
-- No Python API proxy.
-- Browser calls the BYM server directly.
-- User auth token is stored in the browser.
-- Full MR3 map data is cached for the current browser session only.
-- Assets are loaded from the BYM server CDN.
-- Frontend code is split into small ES modules under `app/static/js`.
+## How It Works
 
-This works because the BYM server already exposes permissive CORS headers.
+The viewer runs entirely in your browser. After you choose a server, it connects directly to that BYM server for sign-in, world data, leaderboards, and map data. Map graphics are loaded from the selected server's CDN.
 
-## Current Scope
+This repository includes a Python server for local/development use.
 
-- Map Room 3 only.
-- Per-user BYM login.
-- Live data fetched from the configured BYM server.
-- Search and filter tools run entirely in-browser.
-- World listing and leaderboards are available for every MR3 world.
+## Credentials and Privacy
 
-## Important Limitation
+Your BYM email and password are only sent to the server you choose in the viewer:
 
-The current BYM API does not expose MR3 cell data for arbitrary worlds. It only returns MR3 cells for the authenticated player's current `worldid`.
+- `Stable` sends them to the live Backyard Monsters Refitted server
+- `Local` sends them to your local BYM server
+- `Custom` sends them to the custom host and port you enter
 
-Because this viewer must not modify the BYM server, the map canvas can only render the logged-in player's current MR3 world. The worlds list still works for browsing metadata and leaderboards.
+The viewer does not route your credentials through any separate backend of its own.
 
-## Runtime Config
+## Important Note
 
-Edit [app/static/config.js](C:\Users\Ben\Documents\GitHub\bym-mr-viewer\app\static\config.js) to point the viewer at a different BYM server:
+The current BYM API only exposes Map Room 3 cell data for the authenticated player's current world. Because of that, the map view can only render the world your logged-in account is currently in, even though the viewer can still show metadata and leaderboards for other MR3 worlds.
 
-```js
-window.BYM_MR_VIEWER_CONFIG = {
-  bymBaseUrl: "http://localhost:3001",
-  cdnBaseUrl: "http://localhost:3001",
-  apiVersion: "v1.5.4-beta",
-};
-```
+## Running It Locally
 
-For the local demo stack, both API and CDN should stay on `http://localhost:3001`.
+You need Python 3 installed.
 
-## Run Locally
+From the project root, run:
 
 ```bash
-python dev_server.py
+python3 dev_server.py
 ```
 
-By default this serves [app/static](C:\Users\Ben\Documents\GitHub\bym-mr-viewer\app\static) on `http://localhost:8080`.
+Then open:
 
-Example with a custom port in PowerShell:
+```text
+http://localhost:8080
+```
 
-```bash
+## Optional Server Settings
+
+The local file server supports a few optional environment variables:
+
+- `HOST` default: `0.0.0.0`
+- `PORT` default: `8080`
+- `STATIC_DIR` default: `app/static`
+
+Example in PowerShell:
+
+```powershell
 $env:PORT=9090
 python dev_server.py
 ```
 
-If your machine exposes Python as `python3` instead of `python`, use that command instead.
+## Bug Reports and Feature Requests
 
-Optional environment variables:
-
-- `HOST`: bind host for the static server, default `0.0.0.0`
-- `PORT`: bind port for the static server, default `8080`
-- `STATIC_DIR`: alternate static directory, default `app/static`
-
-## TODO
-
-- Make the left pane collapsible after login.
-- Add tooltips for the home, refresh, and zoom controls.
-- Add a server selector for switching between demo, live, or custom BYM hosts.
-- Add a favicon.
-- Add a credits/footer panel with issue reporting info.
+For bug reports and feature requests, please open an issue on our [issue tracker](https://github.com/PsychoTea/bym-mr-viewer).
