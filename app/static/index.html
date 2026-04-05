@@ -142,7 +142,7 @@
                 aria-expanded="false"
                 disabled
               >
-                Filter Bases
+                Show Filters
               </button>
               <div id="filter-menu" class="filter-menu" hidden>
                 <div class="filter-menu-header">
@@ -154,17 +154,16 @@
                 </div>
                 <div class="filter-section">
                   <p class="filter-section-title">Player</p>
-                  <div class="filter-player-field">
+                  <div class="search-shell filter-player-shell">
                     <input
                       id="filter-player-input"
                       class="search-input filter-player-input"
                       type="search"
-                      list="filter-player-options"
                       placeholder="Filter by username"
                       autocomplete="off"
                       spellcheck="false"
                     >
-                    <datalist id="filter-player-options"></datalist>
+                    <div id="filter-player-results" class="search-results filter-player-results" hidden></div>
                   </div>
                   <p class="filter-help">
                     Show a player&apos;s main yard and owned outposts, including fortifications.

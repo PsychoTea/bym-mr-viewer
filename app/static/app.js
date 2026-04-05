@@ -18,5 +18,5 @@ function applyFavicon() {
   }
 
   const { cdnBaseUrl } = getViewerConfig();
-  favicon.href = `${cdnBaseUrl}/assets/missionicon/icon_maproom.png`;
+  favicon.href = `${cdnBaseUrl}/assets/buildings/maproom/top.1.png`;
 }

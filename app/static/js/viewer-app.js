@@ -33,6 +33,7 @@ export class ViewerApp {
     this.localConfig = null;
     this.session = null;
     this.worlds = [];
+    this.leaderboardCache = new Map();
     this.selectedWorldId = null;
     this.hoveredCell = null;
     this.selectedCell = null;
@@ -41,6 +42,8 @@ export class ViewerApp {
     this.searchMatches = [];
     this.searchActiveIndex = -1;
     this.playerFilterEntries = [];
+    this.playerFilterMatches = [];
+    this.playerFilterActiveIndex = -1;
     this.filterState = createEmptyBaseFilter();
     this.availableFilterLevels = [];
     this.filterMenuOpen = false;
@@ -49,6 +52,7 @@ export class ViewerApp {
     this.refreshCooldownTimer = 0;
     this.sidebarCollapsed = false;
     this.serverSelection = null;
+    this.sessionWorldLookupId = 0;
 
     this.elements = {
       appRoot: document.getElementById("app"),
@@ -82,7 +86,7 @@ export class ViewerApp {
       filterMenu: document.getElementById("filter-menu"),
       filterClearButton: document.getElementById("filter-clear-button"),
       filterPlayerInput: document.getElementById("filter-player-input"),
-      filterPlayerOptions: document.getElementById("filter-player-options"),
+      filterPlayerResults: document.getElementById("filter-player-results"),
       filterTypeOptions: document.getElementById("filter-type-options"),
       filterTribeOptions: document.getElementById("filter-tribe-options"),
       filterLevelOptions: document.getElementById("filter-level-options"),
@@ -124,7 +128,11 @@ export class ViewerApp {
     this.elements.filterToggleButton.addEventListener("click", () => this.handleFilterToggle());
     this.elements.filterClearButton.addEventListener("click", () => this.clearFilters());
     this.elements.filterPlayerInput.addEventListener("input", () => this.handlePlayerFilterInput());
-    this.elements.filterPlayerInput.addEventListener("change", () => this.handlePlayerFilterInput());
+    this.elements.filterPlayerInput.addEventListener("keydown", (event) => this.handlePlayerFilterKeyDown(event));
+    this.elements.filterPlayerInput.addEventListener("focus", () => this.handlePlayerFilterFocus());
+    this.elements.filterPlayerInput.addEventListener("blur", () => {
+      window.setTimeout(() => this.hidePlayerFilterResults(), 120);
+    });
     this.elements.filterTypeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
     this.elements.filterTribeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
     this.elements.filterLevelOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
@@ -257,6 +265,7 @@ export class ViewerApp {
     this.setFilterEnabled(false);
     this.session = null;
     this.worlds = [];
+    this.leaderboardCache = new Map();
     this.selectedWorldId = null;
     this.hoveredCell = null;
     this.selectedCell = null;
@@ -314,7 +323,7 @@ export class ViewerApp {
       return;
     }
 
-    favicon.href = `${this.config.cdnBaseUrl}/assets/missionicon/icon_maproom.png`;
+    favicon.href = `${this.config.cdnBaseUrl}/assets/buildings/maproom/top.1.png`;
   }
 
   async restoreSession() {
@@ -502,8 +511,7 @@ export class ViewerApp {
     this.elements.leaderboardList.textContent = "Loading leaderboard...";
 
     try {
-      const response = await this.api.getLeaderboard(worldId, 3);
-      const rows = response.leaderboard || [];
+      const rows = await this.getLeaderboardRows(worldId);
       this.elements.leaderboardList.replaceChildren();
 
       if (!rows.length) {
@@ -536,6 +544,17 @@ export class ViewerApp {
       console.error(error);
       this.elements.leaderboardList.textContent = error.message || "Failed to load leaderboard.";
     }
+  }
+
+  async getLeaderboardRows(worldId) {
+    if (this.leaderboardCache.has(worldId)) {
+      return this.leaderboardCache.get(worldId);
+    }
+
+    const response = await this.api.getLeaderboard(worldId, 3);
+    const rows = response.leaderboard || [];
+    this.leaderboardCache.set(worldId, rows);
+    return rows;
   }
 
   handleHoveredCell(cell) {
@@ -576,6 +595,14 @@ export class ViewerApp {
     }
     if (Number(cell.uid || 0) > 0) {
       rows.push(["Owner ID", String(cell.uid)]);
+      const ownedBaseCounts = this.renderer?.getOwnedBaseCounts(cell.uid) || {
+        resource: 0,
+        stronghold: 0,
+        fortification: 0,
+      };
+      rows.push(["Resource Outposts", formatNumber(ownedBaseCounts.resource)]);
+      rows.push(["Stronghold Outposts", formatNumber(ownedBaseCounts.stronghold)]);
+      rows.push(["Defender Outposts", formatNumber(ownedBaseCounts.fortification)]);
     }
     if (Number(cell.tid || 0) > 0 || Number(cell.uid || 0) === 0) {
       rows.push(["Tribe", describeTribe(cell)]);
@@ -615,6 +642,8 @@ export class ViewerApp {
 
     this.availableFilterLevels = this.renderer ? this.renderer.getAvailableWildBaseLevels() : [];
     this.playerFilterEntries = this.buildPlayerFilterEntries();
+    this.playerFilterMatches = [];
+    this.playerFilterActiveIndex = -1;
     if (preserveState) {
       const levelSet = new Set(this.availableFilterLevels);
       const validOwnerIds = new Set(this.playerFilterEntries.map((entry) => entry.ownerId));
@@ -682,6 +711,8 @@ export class ViewerApp {
       this.filterState = createEmptyBaseFilter();
       this.availableFilterLevels = [];
       this.playerFilterEntries = [];
+      this.playerFilterMatches = [];
+      this.playerFilterActiveIndex = -1;
       this.setFilterMenuOpen(false);
     }
 
@@ -689,6 +720,9 @@ export class ViewerApp {
     this.syncFilterButtonState();
     this.renderer?.setBaseFilter(this.filterState);
     this.updateFilterStatus(enabled);
+    if (!enabled) {
+      this.hidePlayerFilterResults();
+    }
   }
 
   handleFilterToggle() {
@@ -704,35 +738,177 @@ export class ViewerApp {
     this.elements.filterMenu.hidden = !isOpen;
     this.elements.filterToggleButton.setAttribute("aria-expanded", String(isOpen));
     this.syncFilterButtonState();
+    if (!isOpen) {
+      this.hidePlayerFilterResults();
+    }
   }
 
   handlePlayerFilterInput() {
     const rawQuery = this.elements.filterPlayerInput.value.trim();
     if (!rawQuery) {
-      this.filterState = {
-        ...this.filterState,
-        playerOwnerId: null,
-        playerUsername: "",
-      };
-      this.renderFilterOptions();
-      this.applyFilters();
+      this.playerFilterMatches = [];
+      this.playerFilterActiveIndex = -1;
+      this.hidePlayerFilterResults();
+      if (this.filterState.playerOwnerId) {
+        this.filterState = {
+          ...this.filterState,
+          playerOwnerId: null,
+          playerUsername: "",
+        };
+        this.renderFilterOptions();
+        this.applyFilters();
+      }
       return;
     }
 
-    const match = this.playerFilterEntries.find(
-      (entry) => entry.normalizedUsername === rawQuery.toLocaleLowerCase(),
-    );
-    if (!match) {
+    this.playerFilterMatches = this.getPlayerFilterMatches(rawQuery);
+    this.playerFilterActiveIndex = this.playerFilterMatches.length ? 0 : -1;
+    this.renderPlayerFilterResults();
+  }
+
+  handlePlayerFilterFocus() {
+    const rawQuery = this.elements.filterPlayerInput.value.trim();
+    if (!rawQuery || this.elements.filterPlayerInput.disabled) {
+      this.hidePlayerFilterResults();
       return;
     }
 
+    this.playerFilterMatches = this.getPlayerFilterMatches(rawQuery);
+    this.playerFilterActiveIndex = this.playerFilterMatches.length ? 0 : -1;
+    this.renderPlayerFilterResults();
+  }
+
+  handlePlayerFilterKeyDown(event) {
+    if (event.key === "ArrowDown" && this.playerFilterMatches.length) {
+      event.preventDefault();
+      this.playerFilterActiveIndex = (this.playerFilterActiveIndex + 1) % this.playerFilterMatches.length;
+      this.syncPlayerFilterActiveResult();
+      return;
+    }
+
+    if (event.key === "ArrowUp" && this.playerFilterMatches.length) {
+      event.preventDefault();
+      this.playerFilterActiveIndex =
+        (this.playerFilterActiveIndex - 1 + this.playerFilterMatches.length) % this.playerFilterMatches.length;
+      this.syncPlayerFilterActiveResult();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      this.hidePlayerFilterResults();
+      return;
+    }
+
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+    const selectedMatch =
+      this.playerFilterMatches[this.playerFilterActiveIndex] || this.playerFilterMatches[0] || null;
+    if (selectedMatch) {
+      this.selectPlayerFilterResult(selectedMatch);
+    }
+  }
+
+  getPlayerFilterMatches(query) {
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    return this.playerFilterEntries
+      .map((entry) => {
+        const matchIndex = entry.normalizedUsername.indexOf(normalizedQuery);
+        if (matchIndex === -1) {
+          return null;
+        }
+
+        return {
+          ...entry,
+          matchIndex,
+          isPrefixMatch: matchIndex === 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (left.isPrefixMatch !== right.isPrefixMatch) {
+          return left.isPrefixMatch ? -1 : 1;
+        }
+        if (left.matchIndex !== right.matchIndex) {
+          return left.matchIndex - right.matchIndex;
+        }
+        if (left.distance !== right.distance) {
+          return Number(left.distance ?? Number.MAX_SAFE_INTEGER) - Number(right.distance ?? Number.MAX_SAFE_INTEGER);
+        }
+        return left.normalizedUsername.localeCompare(right.normalizedUsername);
+      })
+      .slice(0, SEARCH_RESULT_LIMIT);
+  }
+
+  renderPlayerFilterResults() {
+    this.elements.filterPlayerResults.replaceChildren();
+
+    if (
+      this.elements.filterPlayerInput.disabled ||
+      !this.elements.filterPlayerInput.value.trim() ||
+      !this.playerFilterMatches.length
+    ) {
+      this.hidePlayerFilterResults();
+      return;
+    }
+
+    this.playerFilterMatches.forEach((entry, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "search-result";
+      if (index === this.playerFilterActiveIndex) {
+        button.classList.add("active");
+      }
+      button.innerHTML = `
+        <img class="search-result-icon" src="${escapeHtml(this.playerBaseIconUrl)}" alt="">
+        <div class="search-result-main">
+          <span class="search-result-name">${escapeHtml(entry.username)}</span>
+          <span class="search-result-meta">Level ${formatNumber(entry.level)}</span>
+        </div>
+        <span class="search-result-distance">${escapeHtml(formatDistance(entry.distance))}</span>
+      `;
+      button.addEventListener("mouseenter", () => {
+        this.playerFilterActiveIndex = index;
+        this.syncPlayerFilterActiveResult();
+      });
+      button.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        this.selectPlayerFilterResult(entry);
+      });
+      this.elements.filterPlayerResults.appendChild(button);
+    });
+
+    this.elements.filterPlayerResults.hidden = false;
+    this.syncPlayerFilterActiveResult();
+  }
+
+  hidePlayerFilterResults() {
+    this.elements.filterPlayerResults.hidden = true;
+    this.elements.filterPlayerResults.replaceChildren();
+  }
+
+  syncPlayerFilterActiveResult() {
+    const buttons = this.elements.filterPlayerResults.querySelectorAll(".search-result");
+    buttons.forEach((button, index) => {
+      button.classList.toggle("active", index === this.playerFilterActiveIndex);
+    });
+  }
+
+  selectPlayerFilterResult(entry) {
     this.filterState = {
       ...createEmptyBaseFilter(),
-      playerOwnerId: match.ownerId,
-      playerUsername: match.username,
+      playerOwnerId: entry.ownerId,
+      playerUsername: entry.username,
     };
     this.renderFilterOptions();
     this.applyFilters();
+    this.hidePlayerFilterResults();
   }
 
   handleFilterOptionChange(event) {
@@ -810,12 +986,13 @@ export class ViewerApp {
       ? "Filter by username"
       : "Sign in to filter by player";
 
-    this.elements.filterPlayerOptions.replaceChildren();
-    this.playerFilterEntries.forEach((entry) => {
-      const option = document.createElement("option");
-      option.value = entry.username;
-      this.elements.filterPlayerOptions.appendChild(option);
-    });
+    if (
+      !enabled ||
+      !this.elements.filterPlayerInput.value.trim() ||
+      !this.elements.filterPlayerInput.matches(":focus")
+    ) {
+      this.hidePlayerFilterResults();
+    }
   }
 
   renderFilterGroup(container, group, options, enabled) {
@@ -846,7 +1023,7 @@ export class ViewerApp {
     this.elements.filterToggleButton.classList.toggle("active", isActive);
 
     if (this.elements.filterToggleButton.disabled) {
-      this.elements.filterToggleButton.textContent = "Filter Bases";
+      this.elements.filterToggleButton.textContent = "Show Filters";
       return;
     }
 
@@ -857,7 +1034,7 @@ export class ViewerApp {
 
     this.elements.filterToggleButton.textContent = hasActiveBaseFilterState(this.filterState)
       ? "Filters Active"
-      : "Filter Bases";
+      : "Show Filters";
   }
 
   updateFilterStatus(isEnabled) {
@@ -1119,7 +1296,8 @@ export class ViewerApp {
     this.elements.sessionStatus.style.color = isError ? "#ffb59f" : "";
   }
 
-  updateSessionWorld(session) {
+  async updateSessionWorld(session) {
+    const lookupId = ++this.sessionWorldLookupId;
     const worldId = String(
       session?.map?.worldid ||
       session?.map?.worldId ||
@@ -1131,14 +1309,51 @@ export class ViewerApp {
       session?.map?.worldname ||
       "",
     ).trim();
-    const world =
+    const username = String(session?.user?.username || "").trim().toLocaleLowerCase();
+
+    let worldLabel = "Unknown Server";
+
+    const matchingWorld =
       this.worlds.find(
         (candidate) =>
           String(candidate.uuid || "") === worldId ||
           String(candidate.worldid || "") === worldId,
       ) || null;
-    const worldLabel = directWorldName || world?.name || (worldId ? `World ${worldId}` : "");
-    this.elements.sessionWorld.hidden = !worldLabel;
+
+    if (matchingWorld?.name) {
+      worldLabel = matchingWorld.name;
+    } else if (directWorldName) {
+      const namedWorld =
+        this.worlds.find(
+          (candidate) => String(candidate.name || "").trim().toLocaleLowerCase() === directWorldName.toLocaleLowerCase(),
+        ) || null;
+      if (namedWorld?.name) {
+        worldLabel = namedWorld.name;
+      }
+    }
+
+    if (worldLabel === "Unknown Server" && username && this.worlds.length) {
+      try {
+        for (const world of this.worlds) {
+          const rows = await this.getLeaderboardRows(world.uuid);
+          const hasUser = rows.some(
+            (entry) => String(entry?.username || "").trim().toLocaleLowerCase() === username,
+          );
+          if (hasUser) {
+            worldLabel = String(world.name || "").trim() || "Unknown Server";
+            break;
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to resolve the active MR3 world from leaderboards.", error);
+      }
+    }
+
+    if (lookupId !== this.sessionWorldLookupId || this.session !== session) {
+      return;
+    }
+
+    this.elements.sessionWorld.hidden = false;
     this.elements.sessionWorld.textContent = worldLabel;
   }
 
@@ -1159,4 +1374,3 @@ export class ViewerApp {
     this.renderDetails();
   }
 }
-

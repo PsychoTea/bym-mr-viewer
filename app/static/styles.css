@@ -45,7 +45,7 @@ body {
   left: 18px;
   bottom: 18px;
   width: var(--sidebar-panel-width);
-  padding: 0;
+  padding: 10px 0 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -54,7 +54,7 @@ body {
   scrollbar-width: none;
   min-width: 0;
   z-index: 7;
-  transition: transform 180ms ease, opacity 180ms ease;
+  transition: transform 180ms ease;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -64,7 +64,6 @@ body {
 
 #app.sidebar-collapsed .sidebar {
   transform: translateX(calc(-100% - 28px));
-  opacity: 0;
   pointer-events: none;
 }
 
@@ -144,6 +143,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  --shadow: none;
   background:
     linear-gradient(180deg, rgba(24, 38, 24, 0.2), rgba(10, 14, 11, 0.65)),
     #111;
@@ -379,7 +379,8 @@ h2 {
 
 .tool-toggle-button {
   width: 100%;
-  padding: 8px 12px;
+  min-height: 45px;
+  padding: 11px 12px;
   white-space: nowrap;
 }
 
@@ -454,13 +455,17 @@ h2 {
   font-size: 13px;
 }
 
-.filter-player-field {
-  display: grid;
-  gap: 8px;
-}
-
 .filter-player-input {
   width: 100%;
+}
+
+.filter-player-shell {
+  width: 100%;
+}
+
+.filter-player-results {
+  z-index: 7;
+  max-height: min(32vh, 320px);
 }
 
 .filter-help {
@@ -701,9 +706,7 @@ h2 {
 .leaderboard-panel {
   min-height: 0;
   min-width: 0;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .leaderboard-list {
@@ -715,6 +718,7 @@ h2 {
   overflow-x: hidden;
   padding-right: 4px;
   scrollbar-width: none;
+  align-content: start;
 }
 
 .leaderboard-list::-webkit-scrollbar {
@@ -751,6 +755,10 @@ h2 {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+}
+
+.leaderboard-row > * {
+  min-width: 0;
 }
 
 .leaderboard-header {

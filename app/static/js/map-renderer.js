@@ -820,6 +820,41 @@ export class MapRenderer {
     return bases;
   }
 
+  getOwnedBaseCounts(ownerId) {
+    const normalizedOwnerId = Number(ownerId || 0);
+    const counts = {
+      resource: 0,
+      stronghold: 0,
+      fortification: 0,
+    };
+
+    if (normalizedOwnerId <= 0) {
+      return counts;
+    }
+
+    for (const cell of this.cellCache.values()) {
+      if (Number(cell.uid || 0) !== normalizedOwnerId || !this.doesContainDisplayableBase(cell)) {
+        continue;
+      }
+
+      switch (Number(cell.b)) {
+        case MR3.yardTypes.resource:
+          counts.resource += 1;
+          break;
+        case MR3.yardTypes.stronghold:
+          counts.stronghold += 1;
+          break;
+        case MR3.yardTypes.fortification:
+          counts.fortification += 1;
+          break;
+        default:
+          break;
+      }
+    }
+
+    return counts;
+  }
+
   screenToWorld(screenX, screenY) {
     return {
       x: this.offsetX + screenX / this.zoom,
