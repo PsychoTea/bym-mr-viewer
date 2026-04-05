@@ -260,7 +260,6 @@ h2 {
   gap: 10px;
 }
 
-.server-select-label,
 .server-custom-field span {
   font-size: 13px;
   color: var(--muted);
