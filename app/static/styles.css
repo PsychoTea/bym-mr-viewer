@@ -201,8 +201,9 @@ body {
 
 .map-coordinates {
   position: absolute;
-  left: 18px;
+  left: calc(18px + var(--sidebar-panel-width) + 18px);
   bottom: 18px;
+  max-width: calc(100% - var(--sidebar-panel-width) - 54px);
   padding: 8px 10px;
   border-radius: 12px;
   background: rgba(14, 12, 10, 0.82);
@@ -211,6 +212,12 @@ body {
   font-size: 13px;
   letter-spacing: 0.04em;
   z-index: 2;
+  transition: left 180ms ease, max-width 180ms ease;
+}
+
+#app.sidebar-collapsed .map-coordinates {
+  left: 18px;
+  max-width: calc(100% - 36px);
 }
 
 .eyebrow {
