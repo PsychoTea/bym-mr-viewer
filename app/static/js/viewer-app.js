@@ -49,6 +49,7 @@ export class ViewerApp {
     this.refreshInFlight = false;
     this.refreshCooldownUntil = 0;
     this.refreshCooldownTimer = 0;
+    this.worldViewEnabled = false;
     this.sidebarCollapsed = false;
     this.serverSelection = null;
 
@@ -88,6 +89,7 @@ export class ViewerApp {
       filterTribeOptions: document.getElementById("filter-tribe-options"),
       filterLevelOptions: document.getElementById("filter-level-options"),
       refreshButton: document.getElementById("refresh-button"),
+      worldButton: document.getElementById("world-button"),
       findHomeButton: document.getElementById("find-home-button"),
       zoomInButton: document.getElementById("zoom-in-button"),
       zoomOutButton: document.getElementById("zoom-out-button"),
@@ -112,6 +114,7 @@ export class ViewerApp {
     this.elements.loginForm.addEventListener("submit", (event) => this.handleLogin(event));
     this.elements.logoutButton.addEventListener("click", () => this.handleLogout());
     this.elements.refreshButton.addEventListener("click", () => this.handleRefreshMap());
+    this.elements.worldButton.addEventListener("click", () => this.handleWorldViewToggle());
     this.elements.findHomeButton.addEventListener("click", () => this.renderer.focusHome());
     this.elements.zoomInButton.addEventListener("click", () => this.renderer.zoomBy(1.18, true));
     this.elements.zoomOutButton.addEventListener("click", () => this.renderer.zoomBy(1 / 1.18, true));
@@ -402,6 +405,7 @@ export class ViewerApp {
     this.refreshInFlight = false;
     this.refreshCooldownUntil = 0;
     this.clearRefreshCooldownTimer();
+    this.setWorldViewEnabled(false);
     window.localStorage.removeItem(buildTokenStorageKey(this.config));
     this.session = null;
     this.elements.logoutButton.hidden = true;
@@ -452,6 +456,32 @@ export class ViewerApp {
       this.refreshInFlight = false;
       this.updateRefreshButtonState();
     }
+  }
+
+  handleWorldViewToggle() {
+    if (!this.session || !this.renderer || this.refreshInFlight) {
+      return;
+    }
+
+    this.setWorldViewEnabled(!this.worldViewEnabled);
+  }
+
+  setWorldViewEnabled(enabled) {
+    const nextEnabled = Boolean(enabled) && Boolean(this.session) && Boolean(this.renderer);
+    this.worldViewEnabled = nextEnabled;
+    this.elements.appRoot.classList.toggle("world-view", nextEnabled);
+
+    if (nextEnabled) {
+      this.hoveredCell = null;
+      this.selectedCell = null;
+      this.hideSearchResults();
+      this.hidePlayerFilterResults();
+      this.setFilterMenuOpen(false);
+    }
+
+    this.renderer?.setWorldViewEnabled(nextEnabled);
+    this.renderDetails();
+    this.updateRefreshButtonState();
   }
 
   async loadWorlds() {
@@ -548,6 +578,10 @@ export class ViewerApp {
   }
 
   handleHoveredCell(cell) {
+    if (this.worldViewEnabled) {
+      return;
+    }
+
     this.hoveredCell = cell;
     if (!this.selectedCell) {
       this.renderDetails();
@@ -555,11 +589,22 @@ export class ViewerApp {
   }
 
   handleSelectedCell(cell) {
+    if (this.worldViewEnabled) {
+      return;
+    }
+
     this.selectedCell = cell;
     this.renderDetails();
   }
 
   renderDetails() {
+    if (this.worldViewEnabled) {
+      this.elements.detailsTitle.textContent = "World view";
+      this.elements.detailsContent.textContent =
+        "Read-only overview mode is active. Use the globe button again to return to the normal interactive map.";
+      return;
+    }
+
     const cell = this.selectedCell || this.hoveredCell || null;
     this.elements.detailsContent.replaceChildren();
 
@@ -1070,22 +1115,38 @@ export class ViewerApp {
 
   updateRefreshButtonState() {
     const button = this.elements.refreshButton;
+    const worldButton = this.elements.worldButton;
     const hasSession = Boolean(this.session);
     const cooldownSeconds = Math.max(0, Math.ceil((this.refreshCooldownUntil - Date.now()) / 1000));
     const isCoolingDown = cooldownSeconds > 0;
+    const mapInteractionsDisabled = !hasSession || this.worldViewEnabled;
 
     button.disabled = !hasSession || this.refreshInFlight || isCoolingDown;
     button.classList.toggle("loading", this.refreshInFlight);
     button.dataset.cooldown = isCoolingDown ? String(cooldownSeconds) : "";
+    worldButton.disabled = !hasSession || this.refreshInFlight;
+    worldButton.classList.toggle("active", this.worldViewEnabled);
+    worldButton.dataset.tooltip = this.worldViewEnabled ? "Exit world view" : "World view";
 
     if (!hasSession) {
       button.title = "Sign in to refresh the world map";
       button.setAttribute("aria-label", "Sign in to refresh the world map");
+      worldButton.title = "Sign in to show the full world map";
+      worldButton.setAttribute("aria-label", "Sign in to show the full world map");
       this.elements.findHomeButton.disabled = true;
+      this.elements.zoomInButton.disabled = true;
+      this.elements.zoomOutButton.disabled = true;
       return;
     }
 
-    this.elements.findHomeButton.disabled = false;
+    worldButton.title = this.worldViewEnabled ? "Exit world view" : "Show full world view";
+    worldButton.setAttribute(
+      "aria-label",
+      this.worldViewEnabled ? "Exit world view" : "Show full world view",
+    );
+    this.elements.findHomeButton.disabled = mapInteractionsDisabled;
+    this.elements.zoomInButton.disabled = mapInteractionsDisabled;
+    this.elements.zoomOutButton.disabled = mapInteractionsDisabled;
 
     if (this.refreshInFlight) {
       button.title = "Refreshing world map...";
@@ -1287,6 +1348,7 @@ export class ViewerApp {
   }
 
   setSignedOutState() {
+    this.setWorldViewEnabled(false);
     this.elements.logoutButton.hidden = true;
     this.elements.loginForm.hidden = false;
     this.elements.sessionPanel.classList.remove("signed-in");

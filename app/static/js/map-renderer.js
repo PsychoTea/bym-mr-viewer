@@ -6,6 +6,7 @@
   MR3,
   RANGE_HEX_EDGES,
   RANGE_HEX_VERTICES,
+  TILE_DEFINITIONS,
   buildFullMapCacheKey,
   calculateCellId,
   cellKey,
@@ -27,6 +28,7 @@
 
 const WHEEL_ZOOM_MULTIPLIER = 1.14;
 const LABEL_RENDER_ZOOM_MIN = 0.55;
+const WORLD_VIEW_CACHE_MAX_DIMENSION = 2048;
 
 export class MapRenderer {
   constructor({ canvas, overlayEl, coordsEl, statusEl, assets, api, onHoverCell, onSelectCell }) {
@@ -64,6 +66,16 @@ export class MapRenderer {
     this.lastPointer = { x: 0, y: 0 };
     this.viewportWidth = 0;
     this.viewportHeight = 0;
+    this.worldViewEnabled = false;
+    this.worldViewSnapshot = null;
+    this.worldViewData = null;
+    this.worldViewStaticLayer = null;
+    this.worldViewRangeLayer = null;
+    this.worldViewLayerMetrics = null;
+    this.worldViewBorderPatternSource = null;
+    this.ownedRangeOverlayLoops = null;
+    this.worldViewPrecomputeHandle = 0;
+    this.worldViewPrecomputeMode = null;
 
     this.canvas.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
     this.canvas.addEventListener("pointermove", (event) => this.handlePointerMove(event));
@@ -81,11 +93,14 @@ export class MapRenderer {
     this.cellCache.clear();
     this.fullMapLoaded = false;
     this.fullMapPreloading = false;
+    this.worldViewEnabled = false;
+    this.worldViewSnapshot = null;
     this.fullMapCacheKey = buildFullMapCacheKey(this.currentUserId, this.mapMeta, this.api?.config?.bymBaseUrl);
     this.homeCellKey = null;
     this.hoveredCellKey = null;
     this.selectedCellKey = null;
     this.zoom = 1;
+    this.invalidateWorldViewCaches({ resetPattern: true });
     this.setOverlay("Loading live MR3 data...");
     this.setCoordinatesDisplay(null);
 
@@ -112,6 +127,7 @@ export class MapRenderer {
       this.fullMapLoaded = true;
     }
 
+    this.scheduleWorldViewPrecompute();
     this.setOverlay("");
     this.render();
   }
@@ -136,6 +152,7 @@ export class MapRenderer {
       this.cancelAnimations();
       this.fullMapLoaded = false;
       this.fullMapPreloading = false;
+      this.invalidateWorldViewCaches();
       this.cellCache.clear();
       this.setOverlay("Refreshing live MR3 data...");
       this.setCoordinatesDisplay(null);
@@ -167,6 +184,7 @@ export class MapRenderer {
           : null;
       this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);
       this.onSelectCell(this.getSelectedCell());
+      this.scheduleWorldViewPrecompute();
       this.setOverlay("");
       this.render();
     } catch (error) {
@@ -181,6 +199,7 @@ export class MapRenderer {
       this.fullMapPreloading = false;
       this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);
       this.onSelectCell(this.getSelectedCell());
+      this.scheduleWorldViewPrecompute();
       this.setOverlay("");
       this.render();
       throw error;
@@ -210,6 +229,10 @@ export class MapRenderer {
     this.baseFilter = createEmptyRendererBaseFilter();
     this.dragging = false;
     this.dragMoved = false;
+    this.dragLastPoint = null;
+    this.worldViewEnabled = false;
+    this.worldViewSnapshot = null;
+    this.invalidateWorldViewCaches({ resetPattern: true });
     this.setOverlay(message);
     this.setCoordinatesDisplay(null);
     this.onHoverCell(null);
@@ -219,6 +242,76 @@ export class MapRenderer {
 
   getSelectedCell() {
     return this.selectedCellKey ? this.cellCache.get(this.selectedCellKey) || null : null;
+  }
+
+  markWorldViewCachesDirty() {
+    this.worldViewData = null;
+    this.worldViewStaticLayer = null;
+    this.worldViewRangeLayer = null;
+    this.worldViewLayerMetrics = null;
+    this.ownedRangeOverlayLoops = null;
+  }
+
+  invalidateWorldViewCaches({ resetPattern = false } = {}) {
+    this.cancelWorldViewPrecompute();
+    this.markWorldViewCachesDirty();
+
+    if (resetPattern) {
+      this.worldViewBorderPatternSource = null;
+    }
+  }
+
+  cancelWorldViewPrecompute() {
+    if (!this.worldViewPrecomputeHandle) {
+      return;
+    }
+
+    if (
+      this.worldViewPrecomputeMode === "idle" &&
+      typeof window.cancelIdleCallback === "function"
+    ) {
+      window.cancelIdleCallback(this.worldViewPrecomputeHandle);
+    } else {
+      window.clearTimeout(this.worldViewPrecomputeHandle);
+    }
+
+    this.worldViewPrecomputeHandle = 0;
+    this.worldViewPrecomputeMode = null;
+  }
+
+  scheduleWorldViewPrecompute() {
+    if (!this.token || !this.cellCache.size) {
+      return;
+    }
+
+    this.cancelWorldViewPrecompute();
+    const run = () => {
+      this.worldViewPrecomputeHandle = 0;
+      this.worldViewPrecomputeMode = null;
+      this.precomputeWorldViewLayers();
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      this.worldViewPrecomputeMode = "idle";
+      this.worldViewPrecomputeHandle = window.requestIdleCallback(run, { timeout: 400 });
+      return;
+    }
+
+    this.worldViewPrecomputeMode = "timeout";
+    this.worldViewPrecomputeHandle = window.setTimeout(run, 48);
+  }
+
+  precomputeWorldViewLayers() {
+    if (!this.token || !this.cellCache.size) {
+      return;
+    }
+
+    this.ensureWorldViewStaticLayer();
+    this.ensureWorldViewRangeLayer();
+
+    if (this.worldViewEnabled) {
+      this.render();
+    }
   }
 
   setBaseFilter(filter) {
@@ -241,6 +334,261 @@ export class MapRenderer {
     }
 
     this.render();
+  }
+
+  setWorldViewEnabled(enabled) {
+    const nextEnabled = Boolean(enabled) && Boolean(this.token);
+    if (nextEnabled === this.worldViewEnabled) {
+      if (nextEnabled) {
+        this.applyWorldViewTransform();
+        this.render();
+      }
+      return;
+    }
+
+    this.cancelAnimations();
+    this.dragging = false;
+    this.dragMoved = false;
+    this.dragLastPoint = null;
+
+    if (nextEnabled) {
+      this.worldViewSnapshot = {
+        offsetX: this.offsetX,
+        offsetY: this.offsetY,
+        zoom: this.zoom,
+        hoveredCellKey: this.hoveredCellKey,
+        selectedCellKey: this.selectedCellKey,
+      };
+      this.worldViewEnabled = true;
+      this.hoveredCellKey = null;
+      this.selectedCellKey = null;
+      this.setCoordinatesDisplay(null);
+      this.onHoverCell(null);
+      this.onSelectCell(null);
+      this.applyWorldViewTransform();
+      this.scheduleWorldViewPrecompute();
+      this.render();
+      return;
+    }
+
+    this.worldViewEnabled = false;
+    this.restoreWorldViewSnapshot();
+    this.render();
+  }
+
+  restoreWorldViewSnapshot() {
+    const snapshot = this.worldViewSnapshot;
+    this.worldViewSnapshot = null;
+
+    if (snapshot) {
+      this.offsetX = snapshot.offsetX;
+      this.offsetY = snapshot.offsetY;
+      this.zoom = snapshot.zoom;
+      this.hoveredCellKey =
+        snapshot.hoveredCellKey && this.cellCache.has(snapshot.hoveredCellKey)
+          ? snapshot.hoveredCellKey
+          : null;
+      this.selectedCellKey =
+        snapshot.selectedCellKey && this.cellCache.has(snapshot.selectedCellKey)
+          ? snapshot.selectedCellKey
+          : null;
+    }
+
+    this.clampOffset();
+    this.onHoverCell(this.hoveredCellKey ? this.cellCache.get(this.hoveredCellKey) || null : null);
+    this.onSelectCell(this.getSelectedCell());
+  }
+
+  getMapWorldBounds() {
+    return {
+      width: this.getMapWidth() * MR3.hexWidth + MR3.hexWidth * 0.5,
+      height: this.getMapHeight() * MR3.hexOverlap + MR3.hexHeight,
+    };
+  }
+
+  applyWorldViewTransform(width = this.canvas.clientWidth || 1, height = this.canvas.clientHeight || 1) {
+    const viewportWidth = Math.max(1, width);
+    const viewportHeight = Math.max(1, height);
+    const worldBounds = this.getMapWorldBounds();
+    const fitPadding = Math.min(36, Math.max(18, Math.min(viewportWidth, viewportHeight) * 0.04));
+    const availableWidth = Math.max(1, viewportWidth - fitPadding * 2);
+    const availableHeight = Math.max(1, viewportHeight - fitPadding * 2);
+    const fitZoom = Math.min(availableWidth / worldBounds.width, availableHeight / worldBounds.height);
+
+    this.zoom = Math.max(0.01, fitZoom);
+    this.offsetX = (worldBounds.width - viewportWidth / this.zoom) * 0.5;
+    this.offsetY = (worldBounds.height - viewportHeight / this.zoom) * 0.5;
+    this.clampOffset();
+  }
+
+  createBufferCanvas(width, height) {
+    const buffer =
+      typeof document !== "undefined"
+        ? document.createElement("canvas")
+        : new OffscreenCanvas(width, height);
+    buffer.width = Math.max(1, Math.floor(width));
+    buffer.height = Math.max(1, Math.floor(height));
+    return buffer;
+  }
+
+  getWorldViewLayerMetrics() {
+    if (this.worldViewLayerMetrics) {
+      return this.worldViewLayerMetrics;
+    }
+
+    const worldBounds = this.getMapWorldBounds();
+    const scale = WORLD_VIEW_CACHE_MAX_DIMENSION / Math.max(worldBounds.width, worldBounds.height, 1);
+    this.worldViewLayerMetrics = {
+      width: Math.max(1, Math.round(worldBounds.width * scale)),
+      height: Math.max(1, Math.round(worldBounds.height * scale)),
+      zoom: scale,
+      worldBounds,
+    };
+    return this.worldViewLayerMetrics;
+  }
+
+  getWorldViewScreenRect() {
+    const worldBounds = this.getMapWorldBounds();
+    return {
+      x: -this.offsetX * this.zoom,
+      y: -this.offsetY * this.zoom,
+      width: worldBounds.width * this.zoom,
+      height: worldBounds.height * this.zoom,
+    };
+  }
+
+  isWorldViewRenderableBase(cell) {
+    const yardType = Number(cell.b);
+    return (
+      this.doesContainDisplayableBase(cell) &&
+      (
+        yardType === MR3.yardTypes.player ||
+        yardType === MR3.yardTypes.resource ||
+        yardType === MR3.yardTypes.stronghold
+      )
+    );
+  }
+
+  getWorldViewData() {
+    if (this.worldViewData) {
+      return this.worldViewData;
+    }
+
+    const boundaryCells = [];
+    const baseCells = [];
+    const rangeSources = [];
+
+    for (const cell of this.cellCache.values()) {
+      if (this.isBorder(cell)) {
+        boundaryCells.push(cell);
+      }
+
+      if (this.isWorldViewRenderableBase(cell)) {
+        baseCells.push(cell);
+      }
+
+      if (Number(cell.rel) !== MR3.relationships.self) {
+        continue;
+      }
+
+      const range = Number(cell.r || 0);
+      if (range <= 0 || !this.doesContainDisplayableBase(cell)) {
+        continue;
+      }
+
+      rangeSources.push({ x: cell.x, y: cell.y, range });
+    }
+
+    boundaryCells.sort((left, right) => (left.y - right.y) || (left.x - right.x));
+    baseCells.sort((left, right) => (left.y - right.y) || (left.x - right.x));
+
+    this.worldViewData = {
+      boundaryCells,
+      baseCells,
+      rangeSources,
+    };
+    return this.worldViewData;
+  }
+
+  getPointBounds(points) {
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const point of points) {
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+
+    return { minX, maxX, minY, maxY };
+  }
+
+  ensureOwnedRangeOverlayLoops() {
+    if (this.ownedRangeOverlayLoops) {
+      return this.ownedRangeOverlayLoops;
+    }
+
+    const { rangeSources } = this.getWorldViewData();
+    if (!rangeSources.length) {
+      this.ownedRangeOverlayLoops = [];
+      return this.ownedRangeOverlayLoops;
+    }
+
+    const rangeCells = new Map();
+    for (const source of rangeSources) {
+      const minY = Math.max(0, source.y - source.range);
+      const maxY = Math.min(this.getMapHeight() - 1, source.y + source.range);
+
+      for (let cellY = minY; cellY <= maxY; cellY += 1) {
+        const minX = Math.max(0, source.x - source.range - 1);
+        const maxX = Math.min(this.getMapWidth() - 1, source.x + source.range + 1);
+
+        for (let cellX = minX; cellX <= maxX; cellX += 1) {
+          if (getHexDistance(source.x, source.y, cellX, cellY) > source.range) {
+            continue;
+          }
+
+          rangeCells.set(cellKey(cellX, cellY), { x: cellX, y: cellY });
+        }
+      }
+    }
+
+    if (!rangeCells.size) {
+      this.ownedRangeOverlayLoops = [];
+      return this.ownedRangeOverlayLoops;
+    }
+
+    const boundaryEdges = new Map();
+    for (const cell of rangeCells.values()) {
+      const world = this.cellToWorld(cell.x, cell.y);
+      this.recordHexBoundaryEdges(world.x, world.y, RANGE_HEX_VERTICES, RANGE_HEX_EDGES, boundaryEdges);
+    }
+
+    this.ownedRangeOverlayLoops = this.buildBoundaryLoops(
+      [...boundaryEdges.values()].filter((edge) => edge.count === 1),
+    )
+      .map((loop) => this.simplifyBoundaryLoop(loop))
+      .filter((loop) => loop.length >= 3)
+      .map((points) => ({
+        points,
+        bounds: this.getPointBounds(points),
+      }));
+
+    return this.ownedRangeOverlayLoops;
+  }
+
+  getVisibleOwnedRangeOverlayLoops(minWorldX, maxWorldX, minWorldY, maxWorldY) {
+    return this.ensureOwnedRangeOverlayLoops().filter(
+      ({ bounds }) => (
+        bounds.maxX >= minWorldX &&
+        bounds.minX <= maxWorldX &&
+        bounds.maxY >= minWorldY &&
+        bounds.minY <= maxWorldY
+      ),
+    );
   }
 
   getAvailableWildBaseLevels() {
@@ -365,6 +713,10 @@ export class MapRenderer {
   }
 
   zoomBy(multiplier, animate = false) {
+    if (this.worldViewEnabled) {
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const focusX = rect.width * 0.5;
     const focusY = rect.height * 0.5;
@@ -510,6 +862,8 @@ export class MapRenderer {
   }
 
   mergeCells(cells) {
+    this.markWorldViewCachesDirty();
+
     for (const rawCell of cells) {
       const normalized = {
         ...rawCell,
@@ -689,7 +1043,7 @@ export class MapRenderer {
   }
 
   handlePointerDown(event) {
-    if (!this.token) {
+    if (!this.token || this.worldViewEnabled) {
       return;
     }
 
@@ -701,6 +1055,11 @@ export class MapRenderer {
   }
 
   handlePointerMove(event) {
+    if (this.worldViewEnabled) {
+      this.setCoordinatesDisplay(null);
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const localX = event.clientX - rect.left;
     const localY = event.clientY - rect.top;
@@ -732,6 +1091,12 @@ export class MapRenderer {
   }
 
   handlePointerUp() {
+    if (this.worldViewEnabled) {
+      this.dragging = false;
+      this.dragLastPoint = null;
+      return;
+    }
+
     this.dragging = false;
     this.dragLastPoint = null;
 
@@ -744,6 +1109,11 @@ export class MapRenderer {
   }
 
   handlePointerLeave() {
+    if (this.worldViewEnabled) {
+      this.setCoordinatesDisplay(null);
+      return;
+    }
+
     this.setCoordinatesDisplay(null);
     if (this.dragging) {
       return;
@@ -760,6 +1130,10 @@ export class MapRenderer {
     }
 
     event.preventDefault();
+    if (this.worldViewEnabled) {
+      return;
+    }
+
     this.cancelAnimations();
     const rect = this.canvas.getBoundingClientRect();
     const localX = event.clientX - rect.left;
@@ -770,6 +1144,10 @@ export class MapRenderer {
   }
 
   focusHome() {
+    if (this.worldViewEnabled) {
+      return;
+    }
+
     this.focusCell(this.getHomeCell(), { animate: true });
   }
 
@@ -778,7 +1156,7 @@ export class MapRenderer {
   }
 
   focusCell(cell, { animate = true } = {}) {
-    if (!cell) {
+    if (!cell || this.worldViewEnabled) {
       return;
     }
 
@@ -880,14 +1258,23 @@ export class MapRenderer {
   }
 
   getClampedOffset(offsetX, offsetY, width, height) {
-    const maxWorldX = this.getMapWidth() * MR3.hexWidth + MR3.hexWidth * 0.5;
-    const maxWorldY = this.getMapHeight() * MR3.hexOverlap + MR3.hexHeight;
-    const maxOffsetX = Math.max(0, maxWorldX - width / this.zoom);
-    const maxOffsetY = Math.max(0, maxWorldY - height / this.zoom);
+    const worldBounds = this.getMapWorldBounds();
+    const visibleWorldWidth = width / this.zoom;
+    const visibleWorldHeight = height / this.zoom;
+    const maxOffsetX = Math.max(0, worldBounds.width - visibleWorldWidth);
+    const maxOffsetY = Math.max(0, worldBounds.height - visibleWorldHeight);
+    const centeredOffsetX = (worldBounds.width - visibleWorldWidth) * 0.5;
+    const centeredOffsetY = (worldBounds.height - visibleWorldHeight) * 0.5;
 
     return {
-      x: clamp(offsetX, 0, maxOffsetX),
-      y: clamp(offsetY, 0, maxOffsetY),
+      x:
+        this.worldViewEnabled && visibleWorldWidth >= worldBounds.width
+          ? centeredOffsetX
+          : clamp(offsetX, 0, maxOffsetX),
+      y:
+        this.worldViewEnabled && visibleWorldHeight >= worldBounds.height
+          ? centeredOffsetY
+          : clamp(offsetY, 0, maxOffsetY),
     };
   }
 
@@ -905,11 +1292,15 @@ export class MapRenderer {
       previousHeight > 0 &&
       (previousWidth !== width || previousHeight !== height)
     ) {
-      const centerWorldX = this.offsetX + previousWidth / (2 * this.zoom);
-      const centerWorldY = this.offsetY + previousHeight / (2 * this.zoom);
-      this.offsetX = centerWorldX - width / (2 * this.zoom);
-      this.offsetY = centerWorldY - height / (2 * this.zoom);
-      this.clampOffset();
+      if (this.worldViewEnabled) {
+        this.applyWorldViewTransform(width, height);
+      } else {
+        const centerWorldX = this.offsetX + previousWidth / (2 * this.zoom);
+        const centerWorldY = this.offsetY + previousHeight / (2 * this.zoom);
+        this.offsetX = centerWorldX - width / (2 * this.zoom);
+        this.offsetY = centerWorldY - height / (2 * this.zoom);
+        this.clampOffset();
+      }
     }
 
     this.viewportWidth = width;
@@ -929,6 +1320,11 @@ export class MapRenderer {
       return;
     }
 
+    if (this.worldViewEnabled) {
+      this.renderWorldView(width, height);
+      return;
+    }
+
     this.drawBackground(width, height);
     const visibleCells = this.getVisibleCells(width, height);
     visibleCells.sort((left, right) => (left.y - right.y) || (left.x - right.x));
@@ -945,118 +1341,275 @@ export class MapRenderer {
   }
 
   drawBackground(width, height) {
+    this.drawBackgroundToContext(this.ctx, width, height);
+  }
+
+  drawBackgroundToContext(
+    targetCtx,
+    width,
+    height,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
     const background = this.assets.get(ASSET_PATHS.background);
     if (!background) {
-      this.ctx.fillStyle = "#203021";
-      this.ctx.fillRect(0, 0, width, height);
+      targetCtx.fillStyle = "#203021";
+      targetCtx.fillRect(0, 0, width, height);
       return;
     }
 
-    const scaledWidth = Math.max(1, Math.round(background.width * this.zoom));
-    const scaledHeight = Math.max(1, Math.round(background.height * this.zoom));
-    const startX = positiveModulo(-(this.offsetX * this.zoom), scaledWidth) - scaledWidth;
-    const startY = positiveModulo(-(this.offsetY * this.zoom), scaledHeight) - scaledHeight;
+    const scaledWidth = Math.max(1, Math.round(background.width * zoom));
+    const scaledHeight = Math.max(1, Math.round(background.height * zoom));
+    const startX = positiveModulo(-(offsetX * zoom), scaledWidth) - scaledWidth;
+    const startY = positiveModulo(-(offsetY * zoom), scaledHeight) - scaledHeight;
 
-    this.ctx.save();
+    targetCtx.save();
     for (let drawY = startY; drawY < height + scaledHeight; drawY += scaledHeight) {
       for (let drawX = startX; drawX < width + scaledWidth; drawX += scaledWidth) {
-        this.ctx.drawImage(background, drawX, drawY, scaledWidth, scaledHeight);
+        targetCtx.drawImage(background, drawX, drawY, scaledWidth, scaledHeight);
       }
     }
-    this.ctx.restore();
+    targetCtx.restore();
 
-    this.ctx.fillStyle = "rgba(10, 15, 10, 0.28)";
+    targetCtx.fillStyle = "rgba(10, 15, 10, 0.28)";
+    targetCtx.fillRect(0, 0, width, height);
+  }
+
+  getWorldViewBorderPatternSource() {
+    if (this.worldViewBorderPatternSource) {
+      return this.worldViewBorderPatternSource;
+    }
+
+    const tileImages = TILE_DEFINITIONS
+      .filter((tile) => tile.src.includes("borderplant"))
+      .map((tile) => this.assets.get(tile.src))
+      .filter(Boolean);
+    if (!tileImages.length) {
+      return null;
+    }
+
+    const patternWidth = MR3.hexWidth * 2;
+    const patternHeight = MR3.hexOverlap * 2;
+    const source = this.createBufferCanvas(patternWidth, patternHeight);
+    const sourceCtx = source.getContext("2d");
+    if (!sourceCtx) {
+      return null;
+    }
+
+    sourceCtx.fillStyle = "#22351f";
+    sourceCtx.fillRect(0, 0, patternWidth, patternHeight);
+
+    for (let row = -1; row <= 2; row += 1) {
+      for (let column = -1; column <= 2; column += 1) {
+        const image = tileImages[positiveModulo(row * 5 + column, tileImages.length)];
+        const drawX = column * MR3.hexWidth + (positiveModulo(row, 2) ? MR3.hexWidth * 0.5 : 0);
+        const drawY = row * MR3.hexOverlap;
+        sourceCtx.drawImage(image, drawX, drawY, image.width, image.height);
+      }
+    }
+
+    sourceCtx.fillStyle = "rgba(9, 15, 8, 0.18)";
+    sourceCtx.fillRect(0, 0, patternWidth, patternHeight);
+    this.worldViewBorderPatternSource = source;
+    return source;
+  }
+
+  drawWorldViewBorderFill(width, height) {
+    const patternSource = this.getWorldViewBorderPatternSource();
+    const pattern = patternSource ? this.ctx.createPattern(patternSource, "repeat") : null;
+
+    this.ctx.save();
+    this.ctx.fillStyle = pattern || "#22351f";
     this.ctx.fillRect(0, 0, width, height);
+    this.ctx.fillStyle = "rgba(6, 12, 5, 0.18)";
+    this.ctx.fillRect(0, 0, width, height);
+    this.ctx.restore();
+  }
+
+  ensureWorldViewStaticLayer() {
+    if (this.worldViewStaticLayer) {
+      return this.worldViewStaticLayer;
+    }
+
+    const metrics = this.getWorldViewLayerMetrics();
+    const layer = this.createBufferCanvas(metrics.width, metrics.height);
+    const layerCtx = layer.getContext("2d");
+    if (!layerCtx) {
+      return null;
+    }
+
+    this.drawBackgroundToContext(layerCtx, metrics.width, metrics.height, {
+      zoom: metrics.zoom,
+      offsetX: 0,
+      offsetY: 0,
+    });
+
+    const { boundaryCells, baseCells } = this.getWorldViewData();
+    for (const cell of boundaryCells) {
+      this.drawCellTerrainToContext(cell, layerCtx, {
+        zoom: metrics.zoom,
+        offsetX: 0,
+        offsetY: 0,
+      });
+    }
+
+    for (const cell of baseCells) {
+      this.drawWorldViewBaseToContext(cell, layerCtx, {
+        zoom: metrics.zoom,
+        offsetX: 0,
+        offsetY: 0,
+      });
+    }
+
+    this.worldViewStaticLayer = layer;
+    return this.worldViewStaticLayer;
+  }
+
+  ensureWorldViewRangeLayer() {
+    if (this.worldViewRangeLayer) {
+      return this.worldViewRangeLayer;
+    }
+
+    const metrics = this.getWorldViewLayerMetrics();
+    const layer = this.createBufferCanvas(metrics.width, metrics.height);
+    const layerCtx = layer.getContext("2d");
+    if (!layerCtx) {
+      return null;
+    }
+
+    this.drawOwnedRangeOverlayLoops(this.ensureOwnedRangeOverlayLoops(), layerCtx, {
+      zoom: metrics.zoom,
+      offsetX: 0,
+      offsetY: 0,
+    });
+
+    this.worldViewRangeLayer = layer;
+    return this.worldViewRangeLayer;
+  }
+
+  renderWorldView(width, height) {
+    this.drawWorldViewBorderFill(width, height);
+
+    const worldRect = this.getWorldViewScreenRect();
+    const staticLayer = this.ensureWorldViewStaticLayer();
+    const rangeLayer = this.ensureWorldViewRangeLayer();
+
+    if (staticLayer) {
+      this.ctx.drawImage(staticLayer, worldRect.x, worldRect.y, worldRect.width, worldRect.height);
+    }
+
+    if (rangeLayer) {
+      this.ctx.drawImage(rangeLayer, worldRect.x, worldRect.y, worldRect.width, worldRect.height);
+    }
+  }
+
+  drawWorldViewBase(cell) {
+    this.drawWorldViewBaseToContext(cell, this.ctx);
+  }
+
+  drawWorldViewBaseToContext(
+    cell,
+    targetCtx = this.ctx,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
+    const world = this.cellToWorld(cell.x, cell.y);
+    const screenX = (world.x - offsetX) * zoom;
+    const screenY = (world.y - offsetY) * zoom;
+    const iconPath = this.getPrimaryIconPath(cell);
+    const image = iconPath ? this.assets.get(iconPath) : null;
+    const maxIconDimension = Number(cell.rel) === MR3.relationships.self ? 12 : 9;
+    const minIconDimension = Number(cell.rel) === MR3.relationships.self ? 8 : 6;
+
+    if (image) {
+      const naturalMaxDimension = Math.max(image.width, image.height, 1);
+      const scale = clamp(
+        zoom,
+        minIconDimension / naturalMaxDimension,
+        maxIconDimension / naturalMaxDimension,
+      );
+      const drawWidth = image.width * scale;
+      const drawHeight = image.height * scale;
+      const drawX = screenX + (MR3.hexWidth * zoom - drawWidth) * 0.5;
+      const drawY = screenY + (MR3.hexHeight * zoom - drawHeight) * 0.5;
+
+      targetCtx.save();
+      targetCtx.shadowColor =
+        Number(cell.rel) === MR3.relationships.self
+          ? "rgba(132, 203, 255, 0.55)"
+          : "rgba(0, 0, 0, 0.24)";
+      targetCtx.shadowBlur = Number(cell.rel) === MR3.relationships.self ? 10 : 3;
+      targetCtx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+      targetCtx.restore();
+    } else {
+      const centerX = (world.x - offsetX + MR3.hexWidth * 0.5) * zoom;
+      const centerY = (world.y - offsetY + MR3.hexHeight * 0.5) * zoom;
+
+      targetCtx.save();
+      targetCtx.fillStyle = Number(cell.rel) === MR3.relationships.self
+        ? "rgba(136, 205, 255, 0.96)"
+        : "rgba(223, 227, 232, 0.8)";
+      targetCtx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      targetCtx.lineWidth = 1;
+      targetCtx.beginPath();
+      targetCtx.arc(centerX, centerY, Number(cell.rel) === MR3.relationships.self ? 3.6 : 2.8, 0, Math.PI * 2);
+      targetCtx.fill();
+      targetCtx.stroke();
+      targetCtx.restore();
+    }
+
+    if (cellKey(cell.x, cell.y) === this.homeCellKey) {
+      const centerX = (world.x - offsetX + MR3.hexWidth * 0.5) * zoom;
+      const centerY = (world.y - offsetY + MR3.hexHeight * 0.5) * zoom;
+
+      targetCtx.save();
+      targetCtx.beginPath();
+      targetCtx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      targetCtx.lineWidth = 1.3;
+      targetCtx.arc(centerX, centerY, 6.6, 0, Math.PI * 2);
+      targetCtx.stroke();
+      targetCtx.restore();
+    }
+  }
+
+  drawOwnedRangeOverlayLoops(
+    loops,
+    targetCtx = this.ctx,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
+    if (!loops.length) {
+      return;
+    }
+
+    const points = loops.map((loop) => loop.points);
+
+    targetCtx.save();
+    targetCtx.fillStyle = "rgba(102, 178, 255, 0.225)";
+    this.traceBoundaryLoops(points, targetCtx, { zoom, offsetX, offsetY });
+    targetCtx.fill("evenodd");
+    targetCtx.restore();
+
+    targetCtx.save();
+    targetCtx.strokeStyle = "rgba(176, 236, 255, 0.72)";
+    targetCtx.lineWidth = clamp(3 * zoom, 1.8, 3.8);
+    targetCtx.lineJoin = "round";
+    targetCtx.lineCap = "round";
+    targetCtx.shadowColor = "rgba(156, 220, 255, 0.26)";
+    targetCtx.shadowBlur = clamp(3 * zoom, 2, 4);
+    this.traceBoundaryLoops(points, targetCtx, { zoom, offsetX, offsetY });
+    targetCtx.stroke();
+    targetCtx.restore();
   }
 
   drawOwnedRangeOverlays(width, height) {
-    const sources = [];
-    for (const cell of this.cellCache.values()) {
-      if (Number(cell.rel) !== MR3.relationships.self) {
-        continue;
-      }
-
-      const range = Number(cell.r || 0);
-      if (range <= 0 || !this.doesContainDisplayableBase(cell)) {
-        continue;
-      }
-
-      sources.push({ x: cell.x, y: cell.y, range });
-    }
-
-    if (!sources.length) {
-      return;
-    }
-
     const marginX = MR3.hexWidth * 2;
     const marginY = MR3.hexHeight * 2;
     const minWorldX = this.offsetX - marginX;
     const maxWorldX = this.offsetX + width / this.zoom + marginX;
     const minWorldY = this.offsetY - marginY;
     const maxWorldY = this.offsetY + height / this.zoom + marginY;
-    const rangeCells = new Map();
 
-    for (const source of sources) {
-      const minY = Math.max(0, source.y - source.range);
-      const maxY = Math.min(this.getMapHeight() - 1, source.y + source.range);
-
-      for (let cellY = minY; cellY <= maxY; cellY += 1) {
-        const minX = Math.max(0, source.x - source.range - 1);
-        const maxX = Math.min(this.getMapWidth() - 1, source.x + source.range + 1);
-
-        for (let cellX = minX; cellX <= maxX; cellX += 1) {
-          if (getHexDistance(source.x, source.y, cellX, cellY) > source.range) {
-            continue;
-          }
-
-          const world = this.cellToWorld(cellX, cellY);
-          if (
-            world.x > maxWorldX ||
-            world.x + MR3.hexWidth < minWorldX ||
-            world.y > maxWorldY ||
-            world.y + MR3.hexHeight < minWorldY
-          ) {
-            continue;
-          }
-
-          rangeCells.set(cellKey(cellX, cellY), { x: cellX, y: cellY });
-        }
-      }
-    }
-
-    if (!rangeCells.size) {
-      return;
-    }
-
-    const boundaryEdges = new Map();
-    for (const cell of rangeCells.values()) {
-      const world = this.cellToWorld(cell.x, cell.y);
-      this.recordHexBoundaryEdges(world.x, world.y, RANGE_HEX_VERTICES, RANGE_HEX_EDGES, boundaryEdges);
-    }
-
-    const rawLoops = this.buildBoundaryLoops([...boundaryEdges.values()].filter((edge) => edge.count === 1))
-      .map((loop) => this.simplifyBoundaryLoop(loop))
-      .filter((loop) => loop.length >= 3);
-    if (!rawLoops.length) {
-      return;
-    }
-
-    this.ctx.save();
-    this.ctx.fillStyle = "rgba(102, 178, 255, 0.225)";
-    this.traceBoundaryLoops(rawLoops);
-    this.ctx.fill("evenodd");
-    this.ctx.restore();
-
-    this.ctx.save();
-    this.ctx.strokeStyle = "rgba(176, 236, 255, 0.72)";
-    this.ctx.lineWidth = clamp(3 * this.zoom, 1.8, 3.8);
-    this.ctx.lineJoin = "round";
-    this.ctx.lineCap = "round";
-    this.ctx.shadowColor = "rgba(156, 220, 255, 0.26)";
-    this.ctx.shadowBlur = clamp(3 * this.zoom, 2, 4);
-    this.traceBoundaryLoops(rawLoops);
-    this.ctx.stroke();
-    this.ctx.restore();
+    this.drawOwnedRangeOverlayLoops(
+      this.getVisibleOwnedRangeOverlayLoops(minWorldX, maxWorldX, minWorldY, maxWorldY),
+    );
   }
 
   getVisibleCells(width, height) {
@@ -1085,14 +1638,22 @@ export class MapRenderer {
   }
 
   drawCellTerrain(cell) {
+    this.drawCellTerrainToContext(cell, this.ctx);
+  }
+
+  drawCellTerrainToContext(
+    cell,
+    targetCtx = this.ctx,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
     const world = this.cellToWorld(cell.x, cell.y);
-    const screenX = (world.x - this.offsetX) * this.zoom;
-    const screenY = (world.y - this.offsetY) * this.zoom;
+    const screenX = (world.x - offsetX) * zoom;
+    const screenY = (world.y - offsetY) * zoom;
     const cellIndex = cell.y * this.getMapWidth() + cell.x;
     const tile = this.assets.pickTile(cell, cellIndex);
 
     if (tile) {
-      this.ctx.drawImage(tile, screenX, screenY, tile.width * this.zoom, tile.height * this.zoom);
+      targetCtx.drawImage(tile, screenX, screenY, tile.width * zoom, tile.height * zoom);
     }
   }
 
@@ -1368,21 +1929,29 @@ export class MapRenderer {
     return loops;
   }
 
-  traceBoundaryLoops(loops, targetCtx = this.ctx) {
+  traceBoundaryLoops(
+    loops,
+    targetCtx = this.ctx,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
     targetCtx.beginPath();
     for (const loop of loops) {
-      this.appendLoopPath(loop, targetCtx);
+      this.appendLoopPath(loop, targetCtx, { zoom, offsetX, offsetY });
     }
   }
 
-  appendLoopPath(points, targetCtx = this.ctx) {
+  appendLoopPath(
+    points,
+    targetCtx = this.ctx,
+    { zoom = this.zoom, offsetX = this.offsetX, offsetY = this.offsetY } = {},
+  ) {
     if (points.length < 3) {
       return;
     }
 
     const screenPoints = points.map((point) => ({
-      x: (point.x - this.offsetX) * this.zoom,
-      y: (point.y - this.offsetY) * this.zoom,
+      x: (point.x - offsetX) * zoom,
+      y: (point.y - offsetY) * zoom,
     }));
 
     targetCtx.moveTo(screenPoints[0].x, screenPoints[0].y);
@@ -1561,7 +2130,7 @@ export class MapRenderer {
       return;
     }
 
-    if (!this.token || !cell) {
+    if (!this.token || !cell || this.worldViewEnabled) {
       this.coordsEl.hidden = true;
       return;
     }
@@ -1606,6 +2175,10 @@ export class MapRenderer {
   }
 
   findCellAtPoint(screenX, screenY) {
+    if (this.worldViewEnabled) {
+      return null;
+    }
+
     const width = this.canvas.clientWidth || 1;
     const height = this.canvas.clientHeight || 1;
     const visible = this.getVisibleCells(width, height);
