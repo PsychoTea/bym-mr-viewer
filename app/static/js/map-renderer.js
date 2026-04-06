@@ -573,10 +573,10 @@ export class MapRenderer {
       return persisted;
     });
 
-    const chunkCount = Math.ceil(cells.length / MR3.fullMapChunkSize);
+    const chunkCount = Math.ceil(cells.length / MR3.fullMapCacheChunkSize);
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
-      const chunkStart = chunkIndex * MR3.fullMapChunkSize;
-      const chunkEnd = chunkStart + MR3.fullMapChunkSize;
+      const chunkStart = chunkIndex * MR3.fullMapCacheChunkSize;
+      const chunkEnd = chunkStart + MR3.fullMapCacheChunkSize;
       await sessionCacheSet(
         `${this.fullMapCacheKey}:chunk:${chunkIndex}`,
         cells.slice(chunkStart, chunkEnd),
@@ -597,7 +597,7 @@ export class MapRenderer {
 
     this.fullMapPreloading = true;
     const totalCells = this.getMapWidth() * this.getMapHeight();
-    const chunkSize = MR3.fullMapChunkSize;
+    const chunkSize = MR3.fullMapRequestChunkSize;
     const totalChunks = Math.ceil(totalCells / chunkSize);
     let nextChunkIndex = 0;
     let completedCells = 0;
@@ -612,6 +612,7 @@ export class MapRenderer {
         const startCellId = chunkIndex * chunkSize + 1;
         const endCellId = Math.min(totalCells, startCellId + chunkSize - 1);
         const cellIds = [];
+        // `calculateCellId()` is row-major, so sequential ids stay contiguous across the grid.
         for (let cellId = startCellId; cellId <= endCellId; cellId += 1) {
           cellIds.push(cellId);
         }
@@ -1626,4 +1627,3 @@ export class MapRenderer {
     return null;
   }
 }
-

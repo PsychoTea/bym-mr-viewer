@@ -1,4 +1,5 @@
 import {
+  MR3,
   buildBymUrl,
   buildSessionPayload,
   extractErrorMessage,
@@ -11,6 +12,8 @@ import {
 export class ApiClient {
   constructor(config = getViewerConfig()) {
     this.config = config;
+    this.mapCellsRequestGate = Promise.resolve();
+    this.mapCellsNextRequestAt = 0;
   }
 
   async getConfig() {
@@ -122,6 +125,16 @@ export class ApiClient {
   }
 
   async getMapCells(token, cellIds) {
+    if (!Array.isArray(cellIds) || !cellIds.length) {
+      return { celldata: [] };
+    }
+
+    if (cellIds.length > MR3.fullMapRequestChunkSize) {
+      throw new Error(`Cell batch exceeds the ${MR3.fullMapRequestChunkSize} cell limit.`);
+    }
+
+    await this.waitForMapCellsRequestSlot();
+
     return fetchJson(buildBymUrl("/worldmapv3/getcells", null, this.config), {
       method: "POST",
       headers: {
@@ -136,6 +149,28 @@ export class ApiClient {
 
   buildApiUrl(path, query = null) {
     return buildBymUrl(`/api/${this.config.apiVersion}${path}`, query, this.config);
+  }
+
+  async waitForMapCellsRequestSlot() {
+    let releaseGate = null;
+    const previousGate = this.mapCellsRequestGate;
+    this.mapCellsRequestGate = new Promise((resolve) => {
+      releaseGate = resolve;
+    });
+
+    await previousGate;
+
+    try {
+      const requestSpacingMs = Math.ceil(60_000 / MR3.fullMapRequestsPerMinute) + 50;
+      const waitMs = Math.max(0, this.mapCellsNextRequestAt - Date.now());
+      if (waitMs > 0) {
+        await new Promise((resolve) => globalThis.setTimeout(resolve, waitMs));
+      }
+
+      this.mapCellsNextRequestAt = Date.now() + requestSpacingMs;
+    } finally {
+      releaseGate();
+    }
   }
 
   extractApiVersion(message) {

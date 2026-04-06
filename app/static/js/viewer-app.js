@@ -22,7 +22,7 @@ import {
   setViewerConfig,
 } from "./shared.js";
 
-const MAP_REFRESH_COOLDOWN_MS = 30_000;
+const MAP_REFRESH_COOLDOWN_MS = 60_000;
 
 export class ViewerApp {
   constructor() {

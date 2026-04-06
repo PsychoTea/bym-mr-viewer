@@ -23,8 +23,10 @@ export const MR3 = {
   hexWidth: 104,
   hexHeight: 68,
   hexOverlap: 50,
-  fullMapChunkSize: 1000,
-  fullMapConcurrency: 8,
+  fullMapRequestChunkSize: 4000,
+  fullMapCacheChunkSize: 1000,
+  fullMapConcurrency: 2,
+  fullMapRequestsPerMinute: 60,
   bufferX: 30,
   bufferY: 30,
   blockedCellStartingHeight: 51,
@@ -611,4 +613,3 @@ export function pointInHex(pointX, pointY, originX, originY, zoom) {
   }
   return inside;
 }
-
