@@ -23,7 +23,7 @@ export const MR3 = {
   hexWidth: 104,
   hexHeight: 68,
   hexOverlap: 50,
-  fullMapRequestChunkSize: 4000,
+  fullMapRequestChunkSize: 4250,
   fullMapCacheChunkSize: 1000,
   fullMapConcurrency: 2,
   fullMapRequestsPerMinute: 60,
