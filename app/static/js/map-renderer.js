@@ -26,7 +26,8 @@
 } from "./shared.js";
 
 const WHEEL_ZOOM_MULTIPLIER = 1.14;
-const LABEL_RENDER_ZOOM_MIN = 0.82 / (WHEEL_ZOOM_MULTIPLIER ** 2);
+const LABEL_RENDER_ZOOM_MIN = 0.55;
+
 export class MapRenderer {
   constructor({ canvas, overlayEl, coordsEl, statusEl, assets, api, onHoverCell, onSelectCell }) {
     this.canvas = canvas;
@@ -390,7 +391,7 @@ export class MapRenderer {
   }
 
   setZoom(nextZoom, focusX, focusY) {
-    const clampedZoom = clamp(nextZoom, 0.42, 1.65);
+    const clampedZoom = clamp(nextZoom, 0.18, 1.65);
     const width = this.canvas.clientWidth || 1;
     const height = this.canvas.clientHeight || 1;
     const localFocusX = focusX ?? width * 0.5;
@@ -406,7 +407,7 @@ export class MapRenderer {
   }
 
   animateZoom(nextZoom, focusX, focusY) {
-    const targetZoom = clamp(nextZoom, 0.42, 1.65);
+    const targetZoom = clamp(nextZoom, 0.18, 1.65);
     const startZoom = this.zoom;
     if (Math.abs(targetZoom - startZoom) < 0.001) {
       return;
