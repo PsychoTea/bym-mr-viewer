@@ -976,7 +976,7 @@ h2 {
   color: #e9c98a;
 }
 
-@media (max-width: 1100px) and (min-width: 901px) {
+@media (max-width: 1000px) and (min-width: 901px) {
   .map-panel {
     --sidebar-panel-width: min(360px, calc(100% - 108px));
   }
@@ -997,14 +997,23 @@ h2 {
     left: calc(var(--map-sidebar-offset) + 18px);
     right: 18px;
     flex-direction: column;
-    align-items: stretch;
-    max-width: none;
+    align-items: flex-end;
   }
 
   .map-search-panel,
   .map-filter-anchor {
-    width: 100%;
+    width: auto;
     min-width: 0;
+  }
+
+  .map-search-panel {
+    width: min(360px, calc(100vw - var(--map-sidebar-offset) - 36px));
+    min-width: min(280px, calc(100vw - var(--map-sidebar-offset) - 112px));
+  }
+
+  .map-filter-anchor {
+    width: 200px;
+    min-width: 200px;
   }
 
   .server-custom-fields {
@@ -1012,11 +1021,7 @@ h2 {
   }
 
   .filter-menu {
-    width: 100%;
-  }
-
-  .sidebar-toggle-button {
-    display: none !important;
+    width: min(420px, calc(100vw - var(--map-sidebar-offset) - 36px));
   }
 }
 
