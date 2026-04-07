@@ -518,6 +518,7 @@ h2 {
   left: 0;
   right: 0;
   display: grid;
+  align-content: start;
   gap: 6px;
   padding: 8px;
   border-radius: 14px;
@@ -528,6 +529,23 @@ h2 {
   overflow-y: auto;
   overscroll-behavior: contain;
   z-index: 6;
+  opacity: 0;
+  transform: translateY(-10px);
+  transform-origin: top center;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 180ms ease, height 180ms ease;
+}
+
+.search-results.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.search-results.closing {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
 }
 
 .search-results[hidden],
@@ -569,6 +587,10 @@ h2 {
   margin-top: 14px;
 }
 
+.filter-section.disabled .filter-section-title {
+  color: rgba(196, 179, 155, 0.62);
+}
+
 .filter-section-title {
   margin-bottom: 8px;
   color: var(--text);
@@ -581,6 +603,11 @@ h2 {
 
 .filter-player-shell {
   width: 100%;
+}
+
+.filter-player-shell.disabled,
+.filter-options.disabled {
+  opacity: 0.48;
 }
 
 .filter-player-results {
@@ -601,10 +628,119 @@ h2 {
   gap: 8px;
 }
 
-.filter-options-level {
-  max-height: min(36vh, 260px);
-  overflow-y: auto;
-  padding-right: 4px;
+.filter-level-range {
+  display: grid;
+  gap: 10px;
+}
+
+.filter-level-range.disabled {
+  opacity: 0.48;
+}
+
+.filter-level-range-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.filter-level-range-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.filter-level-range-track {
+  position: relative;
+  height: 24px;
+}
+
+.filter-level-range-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-50%);
+}
+
+.filter-level-range-fill {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(242, 199, 107, 0.7);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.filter-level-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.filter-level-slider::-webkit-slider-runnable-track {
+  height: 24px;
+  background: transparent;
+}
+
+.filter-level-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: rgba(250, 214, 147, 0.95);
+  border: 1px solid rgba(71, 49, 23, 0.82);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.filter-level-slider::-moz-range-track {
+  height: 24px;
+  background: transparent;
+  border: 0;
+}
+
+.filter-level-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(250, 214, 147, 0.95);
+  border: 1px solid rgba(71, 49, 23, 0.82);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.34);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.filter-menu-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.filter-match-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .filter-chip {
@@ -618,6 +754,11 @@ h2 {
   color: var(--text);
   cursor: pointer;
   user-select: none;
+}
+
+.filter-chip.disabled {
+  opacity: 0.58;
+  cursor: default;
 }
 
 .filter-chip input {
@@ -1228,7 +1369,7 @@ h2 {
     display: none;
   }
 
-  .search-shell {
+  .map-search-panel .search-shell {
     width: 100%;
     position: static;
     height: 100%;
@@ -1236,8 +1377,15 @@ h2 {
     align-items: center;
   }
 
+  .filter-player-shell {
+    position: relative;
+    display: block;
+    height: auto;
+  }
+
   .search-results {
     max-height: calc(100dvh - 168px - env(safe-area-inset-bottom, 0px));
+    transform-origin: top right;
   }
 
   .map-control-button::before,

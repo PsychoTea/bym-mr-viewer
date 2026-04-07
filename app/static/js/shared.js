@@ -133,9 +133,10 @@ export const ASSET_PATHS = {
 };
 
 export const TYPE_FILTER_OPTIONS = [
-  { key: "outpost", label: "Outpost" },
+  { key: "outpost", label: "Wild monster tribe" },
   { key: "resource", label: "Resource outpost" },
   { key: "stronghold", label: "Stronghold" },
+  { key: "fortification", label: "Fortification" },
 ];
 
 export const TRIBE_FILTER_OPTIONS = [
@@ -383,7 +384,8 @@ export function createEmptyBaseFilter() {
   return {
     types: [],
     tribes: [],
-    levels: [],
+    levelMin: null,
+    levelMax: null,
     playerOwnerId: null,
     playerUsername: "",
   };
@@ -393,17 +395,27 @@ export function createEmptyRendererBaseFilter() {
   return {
     types: new Set(),
     tribes: new Set(),
-    levels: new Set(),
+    levelMin: null,
+    levelMax: null,
     playerOwnerId: null,
   };
 }
 
 export function normalizeRendererBaseFilter(filter) {
   const playerOwnerId = Number(filter?.playerOwnerId || 0);
+  let levelMin = Number(filter?.levelMin || 0);
+  let levelMax = Number(filter?.levelMax || 0);
+  levelMin = levelMin > 0 ? levelMin : null;
+  levelMax = levelMax > 0 ? levelMax : null;
+  if (levelMin !== null && levelMax !== null && levelMin > levelMax) {
+    [levelMin, levelMax] = [levelMax, levelMin];
+  }
+
   return {
     types: new Set(filter?.types || []),
     tribes: new Set(filter?.tribes || []),
-    levels: new Set((filter?.levels || []).map((value) => Number(value)).filter((value) => value > 0)),
+    levelMin,
+    levelMax,
     playerOwnerId: playerOwnerId > 0 ? playerOwnerId : null,
   };
 }
@@ -412,7 +424,8 @@ export function hasActiveBaseFilterState(filter) {
   return (
     Number(filter?.types?.length || 0) > 0 ||
     Number(filter?.tribes?.length || 0) > 0 ||
-    Number(filter?.levels?.length || 0) > 0 ||
+    Number(filter?.levelMin || 0) > 0 ||
+    Number(filter?.levelMax || 0) > 0 ||
     Number(filter?.playerOwnerId || 0) > 0
   );
 }

@@ -25,6 +25,7 @@ import {
 const MAP_REFRESH_COOLDOWN_MS = 60_000;
 const MOBILE_LAYOUT_MEDIA_QUERY = "(max-width: 900px)";
 const FILTER_MENU_TRANSITION_MS = 180;
+const SEARCH_RESULTS_TRANSITION_MS = 180;
 const DESKTOP_DETAILS_RESIZE_TRANSITION_MS = 180;
 const MOBILE_DETAILS_RESIZE_TRANSITION_MS = 220;
 const INITIAL_OVERLAY_MESSAGE = "Loading...";
@@ -63,6 +64,18 @@ export class ViewerApp {
     this.mobileSearchOpen = false;
     this.mobileLayoutMediaQuery = window.matchMedia(MOBILE_LAYOUT_MEDIA_QUERY);
     this.filterMenuCloseTimer = 0;
+    this.searchResultsUi = {
+      map: {
+        closeTimer: 0,
+        resizeFrame: 0,
+        resizeTimer: 0,
+      },
+      filterPlayer: {
+        closeTimer: 0,
+        resizeFrame: 0,
+        resizeTimer: 0,
+      },
+    };
     this.desktopDetailsResizeFrame = 0;
     this.desktopDetailsResizeTimer = 0;
     this.mobileDetailsResizeFrame = 0;
@@ -112,7 +125,14 @@ export class ViewerApp {
       filterPlayerResults: document.getElementById("filter-player-results"),
       filterTypeOptions: document.getElementById("filter-type-options"),
       filterTribeOptions: document.getElementById("filter-tribe-options"),
-      filterLevelOptions: document.getElementById("filter-level-options"),
+      filterLevelRange: document.getElementById("filter-level-range"),
+      filterLevelMinInput: document.getElementById("filter-level-min-input"),
+      filterLevelMaxInput: document.getElementById("filter-level-max-input"),
+      filterLevelMinLabel: document.getElementById("filter-level-min-label"),
+      filterLevelMaxLabel: document.getElementById("filter-level-max-label"),
+      filterLevelRangeFill: document.getElementById("filter-level-range-fill"),
+      filterLevelHelp: document.getElementById("filter-level-help"),
+      filterMatchCount: document.getElementById("filter-match-count"),
       refreshButton: document.getElementById("refresh-button"),
       refreshButtonCooldown: document.getElementById("refresh-button-cooldown"),
       findHomeButton: document.getElementById("find-home-button"),
@@ -164,12 +184,20 @@ export class ViewerApp {
     this.elements.filterPlayerInput.addEventListener("input", () => this.handlePlayerFilterInput());
     this.elements.filterPlayerInput.addEventListener("keydown", (event) => this.handlePlayerFilterKeyDown(event));
     this.elements.filterPlayerInput.addEventListener("focus", () => this.handlePlayerFilterFocus());
+    this.elements.filterPlayerInput.addEventListener("click", () => this.handlePlayerFilterInputTap());
     this.elements.filterPlayerInput.addEventListener("blur", () => {
-      window.setTimeout(() => this.hidePlayerFilterResults(), 120);
+      window.setTimeout(() => {
+        if (this.isMobileLayout && this.filterMenuOpen) {
+          this.renderPlayerFilterResults();
+          return;
+        }
+        this.hidePlayerFilterResults();
+      }, 120);
     });
     this.elements.filterTypeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
     this.elements.filterTribeOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
-    this.elements.filterLevelOptions.addEventListener("change", (event) => this.handleFilterOptionChange(event));
+    this.elements.filterLevelMinInput.addEventListener("input", (event) => this.handleLevelRangeInput(event));
+    this.elements.filterLevelMaxInput.addEventListener("input", (event) => this.handleLevelRangeInput(event));
     document.addEventListener("pointerdown", (event) => this.handleGlobalPointerDown(event));
     document.addEventListener("keydown", (event) => this.handleGlobalKeyDown(event));
 
@@ -738,11 +766,41 @@ export class ViewerApp {
     this.playerFilterMatches = [];
     this.playerFilterActiveIndex = -1;
     if (preserveState) {
-      const levelSet = new Set(this.availableFilterLevels);
       const validOwnerIds = new Set(this.playerFilterEntries.map((entry) => entry.ownerId));
+      const availableMinLevel = this.availableFilterLevels[0] ?? null;
+      const availableMaxLevel = this.availableFilterLevels[this.availableFilterLevels.length - 1] ?? null;
+      let levelMin = Number(this.filterState.levelMin || 0) > 0 ? Number(this.filterState.levelMin) : null;
+      let levelMax = Number(this.filterState.levelMax || 0) > 0 ? Number(this.filterState.levelMax) : null;
+
+      if (!this.availableFilterLevels.length) {
+        levelMin = null;
+        levelMax = null;
+      } else {
+        if (levelMin !== null) {
+          levelMin = this.availableFilterLevels.find((level) => level >= levelMin) ?? availableMaxLevel;
+        }
+
+        if (levelMax !== null) {
+          levelMax = [...this.availableFilterLevels].reverse().find((level) => level <= levelMax) ?? availableMinLevel;
+        }
+
+        if (levelMin !== null && levelMax !== null && levelMin > levelMax) {
+          levelMin = levelMax;
+        }
+
+        if (levelMin === availableMinLevel) {
+          levelMin = null;
+        }
+
+        if (levelMax === availableMaxLevel) {
+          levelMax = null;
+        }
+      }
+
       this.filterState = {
         ...this.filterState,
-        levels: this.filterState.levels.filter((level) => levelSet.has(level)),
+        levelMin,
+        levelMax,
         playerOwnerId: validOwnerIds.has(Number(this.filterState.playerOwnerId || 0))
           ? Number(this.filterState.playerOwnerId || 0)
           : null,
@@ -816,6 +874,7 @@ export class ViewerApp {
     this.syncFilterButtonState();
     this.renderer?.setBaseFilter(this.filterState);
     this.updateFilterStatus(enabled);
+    this.updateFilterMatchCount(enabled);
     if (!enabled) {
       this.hidePlayerFilterResults();
     }
@@ -888,10 +947,36 @@ export class ViewerApp {
           playerOwnerId: null,
           playerUsername: "",
         };
-        this.renderFilterOptions();
         this.applyFilters();
       }
+      this.renderFilterOptions();
       return;
+    }
+
+    let didChangeFilterState = false;
+    if (
+      Number(this.filterState.playerOwnerId || 0) > 0 &&
+      rawQuery !== String(this.filterState.playerUsername || "")
+    ) {
+      this.filterState = {
+        ...this.filterState,
+        playerOwnerId: null,
+        playerUsername: "",
+      };
+      didChangeFilterState = true;
+    }
+
+    if (this.filterState.tribes.length > 0) {
+      this.filterState = {
+        ...this.filterState,
+        tribes: [],
+      };
+      didChangeFilterState = true;
+    }
+
+    this.renderFilterOptions();
+    if (didChangeFilterState) {
+      this.applyFilters();
     }
 
     this.playerFilterMatches = this.getPlayerFilterMatches(rawQuery);
@@ -909,6 +994,25 @@ export class ViewerApp {
     this.playerFilterMatches = this.getPlayerFilterMatches(rawQuery);
     this.playerFilterActiveIndex = this.playerFilterMatches.length ? 0 : -1;
     this.renderPlayerFilterResults();
+  }
+
+  handlePlayerFilterInputTap() {
+    if (!this.isMobileLayout || !this.filterMenuOpen) {
+      return;
+    }
+
+    const value = this.elements.filterPlayerInput.value;
+    if (!value) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (document.activeElement !== this.elements.filterPlayerInput) {
+        return;
+      }
+
+      this.elements.filterPlayerInput.setSelectionRange(0, value.length);
+    }, 0);
   }
 
   handlePlayerFilterKeyDown(event) {
@@ -945,97 +1049,37 @@ export class ViewerApp {
   }
 
   getPlayerFilterMatches(query) {
-    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
-    if (!normalizedQuery) {
-      return [];
-    }
-
-    return this.playerFilterEntries
-      .map((entry) => {
-        const matchIndex = entry.normalizedUsername.indexOf(normalizedQuery);
-        if (matchIndex === -1) {
-          return null;
-        }
-
-        return {
-          ...entry,
-          matchIndex,
-          isPrefixMatch: matchIndex === 0,
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => {
-        if (left.isPrefixMatch !== right.isPrefixMatch) {
-          return left.isPrefixMatch ? -1 : 1;
-        }
-        if (left.matchIndex !== right.matchIndex) {
-          return left.matchIndex - right.matchIndex;
-        }
-        if (left.distance !== right.distance) {
-          return Number(left.distance ?? Number.MAX_SAFE_INTEGER) - Number(right.distance ?? Number.MAX_SAFE_INTEGER);
-        }
-        return left.normalizedUsername.localeCompare(right.normalizedUsername);
-      })
-      .slice(0, SEARCH_RESULT_LIMIT);
+    return this.getRankedSearchMatches(this.playerFilterEntries, query);
   }
 
   renderPlayerFilterResults() {
-    this.elements.filterPlayerResults.replaceChildren();
-
-    if (
-      this.elements.filterPlayerInput.disabled ||
-      !this.elements.filterPlayerInput.value.trim() ||
-      !this.playerFilterMatches.length
-    ) {
-      this.hidePlayerFilterResults();
-      return;
-    }
-
-    this.playerFilterMatches.forEach((entry, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "search-result";
-      if (index === this.playerFilterActiveIndex) {
-        button.classList.add("active");
-      }
-      button.innerHTML = `
-        <img class="search-result-icon" src="${escapeHtml(this.playerBaseIconUrl)}" alt="">
-        <div class="search-result-main">
-          <span class="search-result-name">${escapeHtml(entry.username)}</span>
-          <span class="search-result-meta">Level ${formatNumber(entry.level)}</span>
-        </div>
-        <span class="search-result-distance">${escapeHtml(formatDistance(entry.distance))}</span>
-      `;
-      button.addEventListener("mouseenter", () => {
+    this.renderSearchResultsDropdown({
+      resultsEl: this.elements.filterPlayerResults,
+      inputEl: this.elements.filterPlayerInput,
+      matches: this.playerFilterMatches,
+      activeIndex: this.playerFilterActiveIndex,
+      uiState: this.searchResultsUi.filterPlayer,
+      shouldStayClosed: false,
+      onHover: (index) => {
         this.playerFilterActiveIndex = index;
         this.syncPlayerFilterActiveResult();
-      });
-      button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        this.selectPlayerFilterResult(entry);
-      });
-      this.elements.filterPlayerResults.appendChild(button);
+      },
+      onSelect: (entry) => this.selectPlayerFilterResult(entry),
     });
-
-    this.elements.filterPlayerResults.hidden = false;
-    this.syncPlayerFilterActiveResult();
   }
 
   hidePlayerFilterResults() {
-    this.elements.filterPlayerResults.hidden = true;
-    this.elements.filterPlayerResults.replaceChildren();
+    this.setSearchResultsOpen(this.elements.filterPlayerResults, false, this.searchResultsUi.filterPlayer);
   }
 
   syncPlayerFilterActiveResult() {
-    const buttons = this.elements.filterPlayerResults.querySelectorAll(".search-result");
-    buttons.forEach((button, index) => {
-      button.classList.toggle("active", index === this.playerFilterActiveIndex);
-    });
+    this.syncSearchActiveResult(this.elements.filterPlayerResults, this.playerFilterActiveIndex);
   }
 
   selectPlayerFilterResult(entry) {
     this.filterState = {
-      ...createEmptyBaseFilter(),
+      ...this.filterState,
+      tribes: [],
       playerOwnerId: entry.ownerId,
       playerUsername: entry.username,
     };
@@ -1051,12 +1095,12 @@ export class ViewerApp {
     }
 
     const group = input.dataset.group;
-    if (!group || !["types", "tribes", "levels"].includes(group)) {
+    if (!group || !["types", "tribes"].includes(group)) {
       return;
     }
 
     const nextValues = new Set(this.filterState[group]);
-    const rawValue = group === "levels" ? Number(input.value) : input.value;
+    const rawValue = input.value;
     if (input.checked) {
       nextValues.add(rawValue);
     } else {
@@ -1065,8 +1109,6 @@ export class ViewerApp {
 
     this.filterState = {
       ...this.filterState,
-      playerOwnerId: null,
-      playerUsername: "",
       [group]: [...nextValues].sort((left, right) => {
         if (typeof left === "number" && typeof right === "number") {
           return left - right;
@@ -1075,7 +1117,58 @@ export class ViewerApp {
       }),
     };
 
+    if (this.hasWildMonsterTribeTypeFilter()) {
+      this.filterState = {
+        ...this.filterState,
+        playerOwnerId: null,
+        playerUsername: "",
+      };
+      this.playerFilterMatches = [];
+      this.playerFilterActiveIndex = -1;
+      this.elements.filterPlayerInput.value = "";
+      this.hidePlayerFilterResults();
+    }
+
     this.renderFilterOptions();
+    this.applyFilters();
+  }
+
+  handleLevelRangeInput(event) {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || !this.availableFilterLevels.length) {
+      return;
+    }
+
+    let minIndex = Number.parseInt(this.elements.filterLevelMinInput.value, 10);
+    let maxIndex = Number.parseInt(this.elements.filterLevelMaxInput.value, 10);
+    if (Number.isNaN(minIndex)) {
+      minIndex = 0;
+    }
+    if (Number.isNaN(maxIndex)) {
+      maxIndex = this.availableFilterLevels.length - 1;
+    }
+
+    if (input.dataset.bound === "min" && minIndex > maxIndex) {
+      maxIndex = minIndex;
+      this.elements.filterLevelMaxInput.value = String(maxIndex);
+    } else if (input.dataset.bound === "max" && maxIndex < minIndex) {
+      minIndex = maxIndex;
+      this.elements.filterLevelMinInput.value = String(minIndex);
+    }
+
+    const selectedMinLevel = this.availableFilterLevels[minIndex] ?? this.availableFilterLevels[0];
+    const selectedMaxLevel =
+      this.availableFilterLevels[maxIndex] ?? this.availableFilterLevels[this.availableFilterLevels.length - 1];
+    const availableMinLevel = this.availableFilterLevels[0];
+    const availableMaxLevel = this.availableFilterLevels[this.availableFilterLevels.length - 1];
+
+    this.filterState = {
+      ...this.filterState,
+      levelMin: selectedMinLevel > availableMinLevel ? selectedMinLevel : null,
+      levelMax: selectedMaxLevel < availableMaxLevel ? selectedMaxLevel : null,
+    };
+
+    this.renderLevelFilterControls(!this.elements.filterToggleButton.disabled);
     this.applyFilters();
   }
 
@@ -1089,35 +1182,43 @@ export class ViewerApp {
     this.renderer?.setBaseFilter(this.filterState);
     this.syncFilterButtonState();
     this.updateFilterStatus(true);
+    this.updateFilterMatchCount(true);
   }
 
   renderFilterOptions() {
     const filterEnabled = !this.elements.filterToggleButton.disabled;
-    this.renderPlayerFilterOptions(filterEnabled);
+    this.renderPlayerFilterOptions(filterEnabled && !this.hasWildMonsterTribeTypeFilter());
     this.renderFilterGroup(this.elements.filterTypeOptions, "types", TYPE_FILTER_OPTIONS, filterEnabled);
-    this.renderFilterGroup(this.elements.filterTribeOptions, "tribes", TRIBE_FILTER_OPTIONS, filterEnabled);
-
-    const levelOptions = this.availableFilterLevels.map((level) => ({
-      key: level,
-      label: String(level),
-    }));
-    this.renderFilterGroup(this.elements.filterLevelOptions, "levels", levelOptions, filterEnabled);
-
-    if (!levelOptions.length) {
-      this.elements.filterLevelOptions.textContent = filterEnabled
-        ? "No wild base levels available."
-        : "Sign in to load filter levels.";
-    }
-
+    this.renderFilterGroup(
+      this.elements.filterTribeOptions,
+      "tribes",
+      TRIBE_FILTER_OPTIONS,
+      filterEnabled && !this.hasPlayerFilterQuery(),
+    );
+    this.renderLevelFilterControls(filterEnabled);
     this.elements.filterClearButton.disabled = !hasActiveBaseFilterState(this.filterState);
   }
 
   renderPlayerFilterOptions(enabled) {
+    const section = this.elements.filterPlayerInput.closest(".filter-section");
+    const shell = this.elements.filterPlayerInput.closest(".filter-player-shell");
     this.elements.filterPlayerInput.disabled = !enabled;
-    this.elements.filterPlayerInput.value = this.filterState.playerUsername || "";
+    if (section) {
+      section.classList.toggle("disabled", !enabled);
+    }
+    if (shell) {
+      shell.classList.toggle("disabled", !enabled);
+    }
+    if (Number(this.filterState.playerOwnerId || 0) > 0) {
+      this.elements.filterPlayerInput.value = this.filterState.playerUsername || "";
+    } else if (!enabled) {
+      this.elements.filterPlayerInput.value = "";
+    } else if (document.activeElement !== this.elements.filterPlayerInput) {
+      this.elements.filterPlayerInput.value = "";
+    }
     this.elements.filterPlayerInput.placeholder = enabled
       ? "Filter by username"
-      : "Sign in to filter by player";
+      : "Unavailable for wild monster tribe";
 
     if (
       !enabled ||
@@ -1130,6 +1231,11 @@ export class ViewerApp {
 
   renderFilterGroup(container, group, options, enabled) {
     container.replaceChildren();
+    container.classList.toggle("disabled", !enabled);
+    const section = container.closest(".filter-section");
+    if (section) {
+      section.classList.toggle("disabled", !enabled);
+    }
 
     for (const option of options) {
       const label = document.createElement("label");
@@ -1138,7 +1244,7 @@ export class ViewerApp {
       const optionValue = option.key;
       const isChecked = this.filterState[group].includes(optionValue);
 
-      label.className = `filter-chip${isChecked ? " active" : ""}`;
+      label.className = `filter-chip${isChecked ? " active" : ""}${!enabled ? " disabled" : ""}`;
       input.type = "checkbox";
       input.value = String(optionValue);
       input.dataset.group = group;
@@ -1149,6 +1255,138 @@ export class ViewerApp {
       label.append(input, text);
       container.appendChild(label);
     }
+  }
+
+  renderLevelFilterControls(enabled) {
+    const section = this.elements.filterLevelRange.closest(".filter-section");
+    const rangeEnabled = enabled && this.availableFilterLevels.length > 0;
+
+    if (section) {
+      section.classList.toggle("disabled", !rangeEnabled);
+    }
+    this.elements.filterLevelRange.classList.toggle("disabled", !rangeEnabled);
+    this.elements.filterLevelMinInput.disabled = !rangeEnabled;
+    this.elements.filterLevelMaxInput.disabled = !rangeEnabled;
+
+    if (!rangeEnabled) {
+      this.elements.filterLevelMinInput.min = "0";
+      this.elements.filterLevelMinInput.max = "0";
+      this.elements.filterLevelMinInput.value = "0";
+      this.elements.filterLevelMaxInput.min = "0";
+      this.elements.filterLevelMaxInput.max = "0";
+      this.elements.filterLevelMaxInput.value = "0";
+      this.elements.filterLevelMinLabel.textContent = "Min -";
+      this.elements.filterLevelMaxLabel.textContent = "Max -";
+      this.elements.filterLevelRangeFill.style.left = "0%";
+      this.elements.filterLevelRangeFill.style.width = "0%";
+      this.elements.filterLevelHelp.textContent = enabled
+        ? "No wild base levels available."
+        : "Sign in to load filter levels.";
+      return;
+    }
+
+    const levelState = this.getLevelFilterDisplayState();
+    const maxIndex = this.availableFilterLevels.length - 1;
+    this.elements.filterLevelMinInput.min = "0";
+    this.elements.filterLevelMinInput.max = String(maxIndex);
+    this.elements.filterLevelMinInput.value = String(levelState.minIndex);
+    this.elements.filterLevelMaxInput.min = "0";
+    this.elements.filterLevelMaxInput.max = String(maxIndex);
+    this.elements.filterLevelMaxInput.value = String(levelState.maxIndex);
+    this.elements.filterLevelMinLabel.textContent = `Min ${formatNumber(levelState.minLevel)}`;
+    this.elements.filterLevelMaxLabel.textContent = `Max ${formatNumber(levelState.maxLevel)}`;
+
+    const denominator = Math.max(1, maxIndex);
+    const leftPercent = maxIndex > 0 ? (levelState.minIndex / denominator) * 100 : 0;
+    const rightPercent = maxIndex > 0 ? (levelState.maxIndex / denominator) * 100 : 100;
+    this.elements.filterLevelRangeFill.style.left = `${leftPercent}%`;
+    this.elements.filterLevelRangeFill.style.width = `${Math.max(0, rightPercent - leftPercent)}%`;
+    this.elements.filterLevelHelp.textContent = this.buildLevelRangeSummary(levelState.minLevel, levelState.maxLevel);
+  }
+
+  getLevelFilterDisplayState() {
+    if (!this.availableFilterLevels.length) {
+      return {
+        minIndex: 0,
+        maxIndex: 0,
+        minLevel: null,
+        maxLevel: null,
+      };
+    }
+
+    const availableMinLevel = this.availableFilterLevels[0];
+    const availableMaxLevel = this.availableFilterLevels[this.availableFilterLevels.length - 1];
+    const requestedMinLevel = Number(this.filterState.levelMin || 0) > 0
+      ? Number(this.filterState.levelMin)
+      : availableMinLevel;
+    const requestedMaxLevel = Number(this.filterState.levelMax || 0) > 0
+      ? Number(this.filterState.levelMax)
+      : availableMaxLevel;
+
+    let minIndex = this.availableFilterLevels.findIndex((level) => level >= requestedMinLevel);
+    if (minIndex === -1) {
+      minIndex = this.availableFilterLevels.length - 1;
+    }
+
+    let maxIndex = this.availableFilterLevels.length - 1;
+    while (maxIndex > 0 && this.availableFilterLevels[maxIndex] > requestedMaxLevel) {
+      maxIndex -= 1;
+    }
+
+    if (minIndex > maxIndex) {
+      minIndex = maxIndex;
+    }
+
+    return {
+      minIndex,
+      maxIndex,
+      minLevel: this.availableFilterLevels[minIndex],
+      maxLevel: this.availableFilterLevels[maxIndex],
+    };
+  }
+
+  buildLevelRangeSummary(minLevel, maxLevel) {
+    if (minLevel === null || maxLevel === null) {
+      return "No wild base levels available.";
+    }
+
+    if (
+      minLevel === this.availableFilterLevels[0] &&
+      maxLevel === this.availableFilterLevels[this.availableFilterLevels.length - 1]
+    ) {
+      return "Showing all available levels.";
+    }
+
+    if (minLevel === maxLevel) {
+      return `Showing level ${formatNumber(minLevel)}.`;
+    }
+
+    return `Showing levels ${formatNumber(minLevel)}-${formatNumber(maxLevel)}.`;
+  }
+
+  updateFilterMatchCount(isEnabled) {
+    if (!this.elements.filterMatchCount) {
+      return;
+    }
+
+    if (!isEnabled || !this.renderer) {
+      this.elements.filterMatchCount.textContent = "Sign in to load base count.";
+      return;
+    }
+
+    const count = this.renderer.getBaseFilterMatchCount({ includePlayerBases: false });
+    this.elements.filterMatchCount.textContent = `${formatNumber(count)} base${count === 1 ? "" : "s"} shown`;
+  }
+
+  hasPlayerFilterQuery() {
+    return (
+      Number(this.filterState.playerOwnerId || 0) > 0 ||
+      Boolean(this.elements.filterPlayerInput.value.trim())
+    );
+  }
+
+  hasWildMonsterTribeTypeFilter() {
+    return this.filterState.types.includes("outpost");
   }
 
   syncFilterButtonState() {
@@ -1207,8 +1445,15 @@ export class ViewerApp {
       segments.push(`Tribe: ${labels.join(", ")}`);
     }
 
-    if (this.filterState.levels.length) {
-      segments.push(`Levels: ${this.filterState.levels.join(", ")}`);
+    if (Number(this.filterState.levelMin || 0) > 0 || Number(this.filterState.levelMax || 0) > 0) {
+      const levelState = this.getLevelFilterDisplayState();
+      if (levelState.minLevel !== null && levelState.maxLevel !== null) {
+        segments.push(
+          levelState.minLevel === levelState.maxLevel
+            ? `Level: ${levelState.minLevel}`
+            : `Levels: ${levelState.minLevel}-${levelState.maxLevel}`,
+        );
+      }
     }
 
     if (this.filterState.playerUsername) {
@@ -1611,34 +1856,7 @@ export class ViewerApp {
       return;
     }
 
-    const rankedMatches = this.searchEntries
-      .map((entry) => {
-        const matchIndex = entry.normalizedUsername.indexOf(query);
-        if (matchIndex === -1) {
-          return null;
-        }
-
-        return {
-          ...entry,
-          matchIndex,
-          isPrefixMatch: matchIndex === 0,
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => {
-        if (left.isPrefixMatch !== right.isPrefixMatch) {
-          return left.isPrefixMatch ? -1 : 1;
-        }
-        if (left.matchIndex !== right.matchIndex) {
-          return left.matchIndex - right.matchIndex;
-        }
-        if (left.distance !== right.distance) {
-          return Number(left.distance ?? Number.MAX_SAFE_INTEGER) - Number(right.distance ?? Number.MAX_SAFE_INTEGER);
-        }
-        return left.normalizedUsername.localeCompare(right.normalizedUsername);
-      });
-
-    this.searchMatches = rankedMatches.slice(0, SEARCH_RESULT_LIMIT);
+    this.searchMatches = this.getRankedSearchMatches(this.searchEntries, query);
     this.searchActiveIndex = this.searchMatches.length ? 0 : -1;
     this.renderSearchResults();
   }
@@ -1680,59 +1898,203 @@ export class ViewerApp {
   }
 
   renderSearchResults() {
-    const query = this.elements.searchInput.value.trim();
-    this.elements.searchResults.replaceChildren();
-
-    if (
-      !query ||
-      !this.searchMatches.length ||
-      this.elements.searchInput.disabled ||
-      (this.isMobileLayout && !this.mobileSearchOpen)
-    ) {
-      this.hideSearchResults();
-      return;
-    }
-
-    this.searchMatches.forEach((entry, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "search-result";
-      if (index === this.searchActiveIndex) {
-        button.classList.add("active");
-      }
-      button.innerHTML = `
-        <img class="search-result-icon" src="${escapeHtml(this.playerBaseIconUrl)}" alt="">
-        <div class="search-result-main">
-          <span class="search-result-name">${escapeHtml(entry.username)}</span>
-          <span class="search-result-meta">Level ${formatNumber(entry.level)}</span>
-        </div>
-        <span class="search-result-distance">${escapeHtml(formatDistance(entry.distance))}</span>
-      `;
-      button.dataset.index = String(index);
-      button.addEventListener("mouseenter", () => {
+    this.renderSearchResultsDropdown({
+      resultsEl: this.elements.searchResults,
+      inputEl: this.elements.searchInput,
+      matches: this.searchMatches,
+      activeIndex: this.searchActiveIndex,
+      uiState: this.searchResultsUi.map,
+      shouldStayClosed: this.isMobileLayout && !this.mobileSearchOpen,
+      onHover: (index) => {
         this.searchActiveIndex = index;
         this.syncSearchActiveResult();
-      });
-      button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        this.selectSearchResult(entry);
-      });
-      this.elements.searchResults.appendChild(button);
+      },
+      onSelect: (entry) => this.selectSearchResult(entry),
     });
-
-    this.elements.searchResults.hidden = false;
-    this.syncSearchActiveResult();
   }
 
   hideSearchResults() {
-    this.elements.searchResults.hidden = true;
-    this.elements.searchResults.replaceChildren();
+    this.setSearchResultsOpen(this.elements.searchResults, false, this.searchResultsUi.map);
   }
 
-  syncSearchActiveResult() {
-    const buttons = this.elements.searchResults.querySelectorAll(".search-result");
+  getRankedSearchMatches(entries, query) {
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    return entries
+      .map((entry) => {
+        const matchIndex = entry.normalizedUsername.indexOf(normalizedQuery);
+        if (matchIndex === -1) {
+          return null;
+        }
+
+        return {
+          ...entry,
+          matchIndex,
+          isPrefixMatch: matchIndex === 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (left.isPrefixMatch !== right.isPrefixMatch) {
+          return left.isPrefixMatch ? -1 : 1;
+        }
+        if (left.matchIndex !== right.matchIndex) {
+          return left.matchIndex - right.matchIndex;
+        }
+        if (left.distance !== right.distance) {
+          return Number(left.distance ?? Number.MAX_SAFE_INTEGER) - Number(right.distance ?? Number.MAX_SAFE_INTEGER);
+        }
+        return left.normalizedUsername.localeCompare(right.normalizedUsername);
+      })
+      .slice(0, SEARCH_RESULT_LIMIT);
+  }
+
+  renderSearchResultsDropdown({
+    resultsEl,
+    inputEl,
+    matches,
+    activeIndex,
+    uiState,
+    shouldStayClosed,
+    onHover,
+    onSelect,
+  }) {
+    const query = inputEl.value.trim();
+    const shouldAnimateResize = !resultsEl.hidden && resultsEl.classList.contains("open");
+    const previousResultsHeight = shouldAnimateResize ? resultsEl.getBoundingClientRect().height : 0;
+    resultsEl.replaceChildren();
+
+    if (!query || !matches.length || inputEl.disabled || shouldStayClosed) {
+      this.setSearchResultsOpen(resultsEl, false, uiState);
+      return;
+    }
+
+    matches.forEach((entry, index) => {
+      resultsEl.appendChild(this.buildSearchResultButton({
+        entry,
+        index,
+        activeIndex,
+        onHover,
+        onSelect,
+      }));
+    });
+
+    this.setSearchResultsOpen(resultsEl, true, uiState);
+    this.syncSearchActiveResult(resultsEl, activeIndex);
+    this.animateSearchResultsResize(resultsEl, uiState, previousResultsHeight, shouldAnimateResize);
+  }
+
+  buildSearchResultButton({ entry, index, activeIndex, onHover, onSelect }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result";
+    if (index === activeIndex) {
+      button.classList.add("active");
+    }
+    button.innerHTML = `
+      <img class="search-result-icon" src="${escapeHtml(this.playerBaseIconUrl)}" alt="">
+      <div class="search-result-main">
+        <span class="search-result-name">${escapeHtml(entry.username)}</span>
+        <span class="search-result-meta">Level ${formatNumber(entry.level)}</span>
+      </div>
+      <span class="search-result-distance">${escapeHtml(formatDistance(entry.distance))}</span>
+    `;
+    button.addEventListener("mouseenter", () => onHover(index));
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      onSelect(entry);
+    });
+    return button;
+  }
+
+  setSearchResultsOpen(results, isOpen, uiState) {
+    const nextIsOpen = Boolean(isOpen);
+
+    if (uiState.closeTimer) {
+      window.clearTimeout(uiState.closeTimer);
+      uiState.closeTimer = 0;
+    }
+
+    this.cancelSearchResultsResizeAnimation(uiState);
+
+    if (nextIsOpen) {
+      results.hidden = false;
+      results.classList.remove("closing");
+      window.requestAnimationFrame(() => {
+        if (results.hidden) {
+          return;
+        }
+        results.classList.add("open");
+      });
+      return;
+    }
+
+    results.classList.remove("open");
+    if (results.hidden) {
+      results.style.height = "";
+      results.replaceChildren();
+      results.classList.remove("closing");
+      return;
+    }
+
+    results.classList.add("closing");
+    uiState.closeTimer = window.setTimeout(() => {
+      results.hidden = true;
+      results.style.height = "";
+      results.classList.remove("closing");
+      results.replaceChildren();
+      uiState.closeTimer = 0;
+    }, SEARCH_RESULTS_TRANSITION_MS);
+  }
+
+  animateSearchResultsResize(results, uiState, previousHeight, shouldAnimate) {
+    this.cancelSearchResultsResizeAnimation(uiState);
+
+    if (!shouldAnimate || results.hidden || !results.classList.contains("open")) {
+      results.style.height = "";
+      return;
+    }
+
+    const nextHeight = results.getBoundingClientRect().height;
+    if (!previousHeight || Math.abs(nextHeight - previousHeight) < 1) {
+      results.style.height = "";
+      return;
+    }
+
+    results.style.height = `${previousHeight}px`;
+    void results.offsetHeight;
+
+    uiState.resizeFrame = window.requestAnimationFrame(() => {
+      uiState.resizeFrame = 0;
+      results.style.height = `${nextHeight}px`;
+      uiState.resizeTimer = window.setTimeout(() => {
+        uiState.resizeTimer = 0;
+        if (!results.hidden && results.classList.contains("open")) {
+          results.style.height = "";
+        }
+      }, SEARCH_RESULTS_TRANSITION_MS);
+    });
+  }
+
+  cancelSearchResultsResizeAnimation(uiState) {
+    if (uiState.resizeFrame) {
+      window.cancelAnimationFrame(uiState.resizeFrame);
+      uiState.resizeFrame = 0;
+    }
+
+    if (uiState.resizeTimer) {
+      window.clearTimeout(uiState.resizeTimer);
+      uiState.resizeTimer = 0;
+    }
+  }
+
+  syncSearchActiveResult(resultsEl = this.elements.searchResults, activeIndex = this.searchActiveIndex) {
+    const buttons = resultsEl.querySelectorAll(".search-result");
     buttons.forEach((button, index) => {
-      button.classList.toggle("active", index === this.searchActiveIndex);
+      button.classList.toggle("active", index === activeIndex);
     });
   }
 

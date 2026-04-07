@@ -205,7 +205,39 @@
                 </div>
                 <div class="filter-section">
                   <p class="filter-section-title">Level</p>
-                  <div id="filter-level-options" class="filter-options filter-options-level"></div>
+                  <div id="filter-level-range" class="filter-level-range">
+                    <div class="filter-level-range-values">
+                      <span id="filter-level-min-label" class="filter-level-range-value">Min -</span>
+                      <span id="filter-level-max-label" class="filter-level-range-value">Max -</span>
+                    </div>
+                    <div class="filter-level-range-track">
+                      <div id="filter-level-range-fill" class="filter-level-range-fill"></div>
+                      <input
+                        id="filter-level-min-input"
+                        class="filter-level-slider"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                        data-bound="min"
+                      >
+                      <input
+                        id="filter-level-max-input"
+                        class="filter-level-slider"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                        data-bound="max"
+                      >
+                    </div>
+                  </div>
+                  <p id="filter-level-help" class="filter-help">No wild base levels available.</p>
+                </div>
+                <div class="filter-menu-footer">
+                  <p id="filter-match-count" class="filter-match-count">0 bases shown</p>
                 </div>
               </div>
             </div>

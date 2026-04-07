@@ -256,7 +256,7 @@ export class MapRenderer {
 
     for (const cell of this.cellCache.values()) {
       const metadata = this.getBaseFilterMetadata(cell);
-      if (metadata) {
+      if (metadata && metadata.level > 0) {
         levels.add(metadata.level);
       }
     }
@@ -268,7 +268,8 @@ export class MapRenderer {
     return (
       this.baseFilter.types.size > 0 ||
       this.baseFilter.tribes.size > 0 ||
-      this.baseFilter.levels.size > 0 ||
+      Number(this.baseFilter.levelMin || 0) > 0 ||
+      Number(this.baseFilter.levelMax || 0) > 0 ||
       Number(this.baseFilter.playerOwnerId || 0) > 0
     );
   }
@@ -291,10 +292,6 @@ export class MapRenderer {
 
     if (!this.hasActiveBaseFilter()) {
       return true;
-    }
-
-    if (Number(this.baseFilter.playerOwnerId || 0) > 0) {
-      return this.matchesPlayerOwnerFilter(cell);
     }
 
     if (this.isAlwaysVisibleOwnedBase(cell)) {
@@ -323,6 +320,20 @@ export class MapRenderer {
   }
 
   matchesBaseFilter(cell) {
+    if (Number(this.baseFilter.playerOwnerId || 0) > 0 && !this.matchesPlayerOwnerFilter(cell)) {
+      return false;
+    }
+
+    const needsMetadata = (
+      this.baseFilter.types.size > 0 ||
+      this.baseFilter.tribes.size > 0 ||
+      Number(this.baseFilter.levelMin || 0) > 0 ||
+      Number(this.baseFilter.levelMax || 0) > 0
+    );
+    if (!needsMetadata) {
+      return true;
+    }
+
     const metadata = this.getBaseFilterMetadata(cell);
     if (!metadata) {
       return false;
@@ -332,19 +343,69 @@ export class MapRenderer {
       return false;
     }
 
-    if (this.baseFilter.tribes.size > 0 && !this.baseFilter.tribes.has(metadata.tribe)) {
+    if (
+      this.baseFilter.tribes.size > 0 &&
+      (!metadata.tribe || !this.baseFilter.tribes.has(metadata.tribe))
+    ) {
       return false;
     }
 
-    if (this.baseFilter.levels.size > 0 && !this.baseFilter.levels.has(metadata.level)) {
+    const levelMin = Number(this.baseFilter.levelMin || 0);
+    const levelMax = Number(this.baseFilter.levelMax || 0);
+    if (levelMin > 0 && (metadata.level <= 0 || metadata.level < levelMin)) {
+      return false;
+    }
+
+    if (levelMax > 0 && (metadata.level <= 0 || metadata.level > levelMax)) {
       return false;
     }
 
     return true;
   }
 
+  getVisibleBaseCount({ includePlayerBases = true } = {}) {
+    let count = 0;
+
+    for (const cell of this.cellCache.values()) {
+      if (!this.shouldDisplayBaseCell(cell)) {
+        continue;
+      }
+
+      if (!includePlayerBases && Number(cell.b) === MR3.yardTypes.player) {
+        continue;
+      }
+
+      count += 1;
+    }
+
+    return count;
+  }
+
+  getBaseFilterMatchCount({ includePlayerBases = true } = {}) {
+    let count = 0;
+    const hasActiveFilter = this.hasActiveBaseFilter();
+
+    for (const cell of this.cellCache.values()) {
+      if (!this.doesContainDisplayableBase(cell)) {
+        continue;
+      }
+
+      if (!includePlayerBases && Number(cell.b) === MR3.yardTypes.player) {
+        continue;
+      }
+
+      if (hasActiveFilter && !this.matchesBaseFilter(cell)) {
+        continue;
+      }
+
+      count += 1;
+    }
+
+    return count;
+  }
+
   getBaseFilterMetadata(cell) {
-    if (Number(cell.uid || 0) !== 0 || !cell.bid) {
+    if (!cell.bid) {
       return null;
     }
 
@@ -359,16 +420,15 @@ export class MapRenderer {
       case MR3.yardTypes.stronghold:
         type = "stronghold";
         break;
+      case MR3.yardTypes.fortification:
+        type = "fortification";
+        break;
       default:
         return null;
     }
 
     const tribe = getTribeKey(cell);
     const level = Number(cell.l || 0);
-    if (!tribe || level <= 0) {
-      return null;
-    }
-
     return { type, tribe, level };
   }
 
