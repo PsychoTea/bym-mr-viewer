@@ -27,6 +27,7 @@
 
 const WHEEL_ZOOM_MULTIPLIER = 1.14;
 const LABEL_RENDER_ZOOM_MIN = 0.55;
+const DEFAULT_MAP_ZOOM = 1;
 
 export class MapRenderer {
   constructor({ canvas, overlayEl, coordsEl, statusEl, assets, api, onHoverCell, onSelectCell }) {
@@ -49,7 +50,7 @@ export class MapRenderer {
     this.selectedCellKey = null;
     this.offsetX = 0;
     this.offsetY = 0;
-    this.zoom = 1;
+    this.zoom = DEFAULT_MAP_ZOOM;
     this.zoomAnimationFrame = 0;
     this.panAnimationFrame = 0;
     this.pendingFetch = false;
@@ -60,14 +61,19 @@ export class MapRenderer {
     this.baseFilter = createEmptyRendererBaseFilter();
     this.dragging = false;
     this.dragMoved = false;
+    this.dragPointerId = null;
     this.dragLastPoint = null;
+    this.activePointers = new Map();
+    this.pinchState = null;
     this.lastPointer = { x: 0, y: 0 };
     this.viewportWidth = 0;
     this.viewportHeight = 0;
 
     this.canvas.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
     this.canvas.addEventListener("pointermove", (event) => this.handlePointerMove(event));
-    this.canvas.addEventListener("pointerup", () => this.handlePointerUp());
+    this.canvas.addEventListener("pointerup", (event) => this.handlePointerUp(event));
+    this.canvas.addEventListener("pointercancel", (event) => this.handlePointerCancel(event));
+    this.canvas.addEventListener("lostpointercapture", (event) => this.handlePointerCancel(event));
     this.canvas.addEventListener("pointerleave", () => this.handlePointerLeave());
     this.canvas.addEventListener("wheel", (event) => this.handleWheel(event), { passive: false });
     window.addEventListener("resize", () => this.render());
@@ -85,7 +91,7 @@ export class MapRenderer {
     this.homeCellKey = null;
     this.hoveredCellKey = null;
     this.selectedCellKey = null;
-    this.zoom = 1;
+    this.zoom = DEFAULT_MAP_ZOOM;
     this.setOverlay("Loading live MR3 data...");
     this.setCoordinatesDisplay(null);
 
@@ -96,8 +102,6 @@ export class MapRenderer {
     if (homeCell) {
       this.homeCellKey = cellKey(homeCell.x, homeCell.y);
       this.centerOnCell(homeCell.x, homeCell.y);
-      this.selectedCellKey = this.homeCellKey;
-      this.onSelectCell(this.getSelectedCell());
     } else {
       this.offsetX = 0;
       this.offsetY = 0;
@@ -198,7 +202,7 @@ export class MapRenderer {
     this.selectedCellKey = null;
     this.offsetX = 0;
     this.offsetY = 0;
-    this.zoom = 1;
+    this.zoom = DEFAULT_MAP_ZOOM;
     this.pendingFetch = false;
     this.fullMapLoaded = false;
     this.fullMapPreloading = false;
@@ -210,6 +214,10 @@ export class MapRenderer {
     this.baseFilter = createEmptyRendererBaseFilter();
     this.dragging = false;
     this.dragMoved = false;
+    this.dragPointerId = null;
+    this.dragLastPoint = null;
+    this.activePointers.clear();
+    this.pinchState = null;
     this.setOverlay(message);
     this.setCoordinatesDisplay(null);
     this.onHoverCell(null);
@@ -480,6 +488,62 @@ export class MapRenderer {
     this.panAnimationFrame = window.requestAnimationFrame(step);
   }
 
+  animateViewTo(cellX, cellY, nextZoom) {
+    const targetZoom = clamp(nextZoom, 0.18, 1.65);
+    const width = this.canvas.clientWidth || 1;
+    const height = this.canvas.clientHeight || 1;
+    const startOffsetX = this.offsetX;
+    const startOffsetY = this.offsetY;
+    const startZoom = this.zoom;
+    const startCenterWorldX = startOffsetX + width / (2 * startZoom);
+    const startCenterWorldY = startOffsetY + height / (2 * startZoom);
+    const targetOffset = this.getCenteredOffset(cellX, cellY, targetZoom);
+    const targetCenterWorldX = targetOffset.x + width / (2 * targetZoom);
+    const targetCenterWorldY = targetOffset.y + height / (2 * targetZoom);
+
+    if (
+      Math.abs(targetZoom - startZoom) < 0.001 &&
+      Math.abs(targetOffset.x - startOffsetX) < 0.5 &&
+      Math.abs(targetOffset.y - startOffsetY) < 0.5
+    ) {
+      this.zoom = targetZoom;
+      this.offsetX = targetOffset.x;
+      this.offsetY = targetOffset.y;
+      this.render();
+      this.scheduleFetch();
+      return;
+    }
+
+    this.cancelAnimations();
+    const startTime = performance.now();
+    const durationMs = 280;
+
+    const step = (timestamp) => {
+      const progress = clamp((timestamp - startTime) / durationMs, 0, 1);
+      const eased = 1 - ((1 - progress) ** 3);
+      const interpolatedZoom = startZoom + (targetZoom - startZoom) * eased;
+      const centerWorldX = startCenterWorldX + (targetCenterWorldX - startCenterWorldX) * eased;
+      const centerWorldY = startCenterWorldY + (targetCenterWorldY - startCenterWorldY) * eased;
+
+      this.zoom = interpolatedZoom;
+      this.offsetX = centerWorldX - width / (2 * this.zoom);
+      this.offsetY = centerWorldY - height / (2 * this.zoom);
+      const clampedOffset = this.getClampedOffset(this.offsetX, this.offsetY, width, height, this.zoom);
+      this.offsetX = clampedOffset.x;
+      this.offsetY = clampedOffset.y;
+      this.render();
+
+      if (progress < 1) {
+        this.panAnimationFrame = window.requestAnimationFrame(step);
+      } else {
+        this.panAnimationFrame = 0;
+        this.scheduleFetch();
+      }
+    };
+
+    this.panAnimationFrame = window.requestAnimationFrame(step);
+  }
+
   cancelPanAnimation() {
     if (!this.panAnimationFrame) {
       return;
@@ -494,13 +558,13 @@ export class MapRenderer {
     this.cancelPanAnimation();
   }
 
-  getCenteredOffset(cellX, cellY) {
+  getCenteredOffset(cellX, cellY, zoom = this.zoom) {
     const width = this.canvas.clientWidth || 1;
     const height = this.canvas.clientHeight || 1;
     const world = this.cellToWorld(cellX, cellY);
-    const offsetX = world.x - width / (2 * this.zoom) + MR3.hexWidth * 0.5;
-    const offsetY = world.y - height / (2 * this.zoom) + MR3.hexHeight * 0.5;
-    return this.getClampedOffset(offsetX, offsetY, width, height);
+    const offsetX = world.x - width / (2 * zoom) + MR3.hexWidth * 0.5;
+    const offsetY = world.y - height / (2 * zoom) + MR3.hexHeight * 0.5;
+    return this.getClampedOffset(offsetX, offsetY, width, height, zoom);
   }
 
   centerOnCell(cellX, cellY) {
@@ -693,21 +757,65 @@ export class MapRenderer {
       return;
     }
 
-    this.cancelAnimations();
-    this.dragging = true;
-    this.dragMoved = false;
-    this.dragLastPoint = { x: event.clientX, y: event.clientY };
-    this.canvas.setPointerCapture(event.pointerId);
-  }
-
-  handlePointerMove(event) {
     const rect = this.canvas.getBoundingClientRect();
     const localX = event.clientX - rect.left;
     const localY = event.clientY - rect.top;
     this.lastPointer = { x: localX, y: localY };
     this.setCoordinatesDisplay(this.findGridCellAtPoint(localX, localY));
 
-    if (this.dragging && this.dragLastPoint) {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
+    this.cancelAnimations();
+    this.activePointers.set(event.pointerId, {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    this.canvas.setPointerCapture(event.pointerId);
+
+    if (this.activePointers.size >= 2) {
+      this.startPinchGesture(rect);
+      return;
+    }
+
+    this.dragging = true;
+    this.dragMoved = false;
+    this.dragPointerId = event.pointerId;
+    this.dragLastPoint = { x: event.clientX, y: event.clientY };
+  }
+
+  handlePointerMove(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+
+    if (this.activePointers.has(event.pointerId)) {
+      this.activePointers.set(event.pointerId, {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    }
+
+    this.lastPointer = { x: localX, y: localY };
+    this.setCoordinatesDisplay(this.findGridCellAtPoint(localX, localY));
+
+    if (this.pinchState && this.activePointers.size >= 2) {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      this.applyPinchGesture(rect);
+      return;
+    }
+
+    if (this.dragging && this.dragLastPoint && event.pointerId === this.dragPointerId) {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
       const deltaX = event.clientX - this.dragLastPoint.x;
       const deltaY = event.clientY - this.dragLastPoint.y;
       if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
@@ -731,16 +839,72 @@ export class MapRenderer {
     }
   }
 
-  handlePointerUp() {
+  handlePointerUp(event) {
+    const wasPinching = Boolean(this.pinchState);
+    const wasDraggingPointer = this.dragging && event.pointerId === this.dragPointerId;
+
+    this.releasePointerCapture(event.pointerId);
+    this.activePointers.delete(event.pointerId);
+
+    if (wasPinching) {
+      this.pinchState = null;
+
+      if (this.activePointers.size >= 2) {
+        this.startPinchGesture();
+      } else if (this.activePointers.size === 1) {
+        this.resumeDragFromActivePointer();
+      } else {
+        this.dragging = false;
+        this.dragMoved = false;
+        this.dragPointerId = null;
+        this.dragLastPoint = null;
+      }
+      return;
+    }
+
+    if (!wasDraggingPointer) {
+      return;
+    }
+
     this.dragging = false;
+    this.dragPointerId = null;
     this.dragLastPoint = null;
 
     if (!this.dragMoved) {
       const hovered = this.findCellAtPoint(this.lastPointer.x, this.lastPointer.y);
-      this.selectedCellKey = hovered ? cellKey(hovered.x, hovered.y) : null;
+      const hoveredKey = hovered ? cellKey(hovered.x, hovered.y) : null;
+      if (hoveredKey !== this.hoveredCellKey) {
+        this.hoveredCellKey = hoveredKey;
+        this.onHoverCell(hovered);
+      }
+      this.selectedCellKey = hoveredKey;
       this.onSelectCell(this.getSelectedCell());
       this.render();
     }
+  }
+
+  handlePointerCancel(event) {
+    if (event?.pointerId != null) {
+      this.releasePointerCapture(event.pointerId);
+      this.activePointers.delete(event.pointerId);
+    }
+
+    if (this.activePointers.size >= 2) {
+      this.startPinchGesture();
+      return;
+    }
+
+    this.pinchState = null;
+
+    if (this.activePointers.size === 1) {
+      this.resumeDragFromActivePointer();
+      return;
+    }
+
+    this.dragging = false;
+    this.dragMoved = false;
+    this.dragPointerId = null;
+    this.dragLastPoint = null;
   }
 
   handlePointerLeave() {
@@ -769,15 +933,120 @@ export class MapRenderer {
     this.setZoom(this.zoom * multiplier, localX, localY);
   }
 
+  startPinchGesture(rect = this.canvas.getBoundingClientRect()) {
+    const pointers = this.getActivePinchPointers();
+    if (pointers.length < 2) {
+      this.pinchState = null;
+      return;
+    }
+
+    const center = this.getPointerCenter(pointers[0], pointers[1], rect);
+    this.pinchState = {
+      distance: Math.max(1, this.getPointerDistance(pointers[0], pointers[1])),
+      zoom: this.zoom,
+      world: this.screenToWorld(center.x, center.y),
+    };
+    this.dragging = false;
+    this.dragMoved = true;
+    this.dragPointerId = null;
+    this.dragLastPoint = null;
+    this.lastPointer = center;
+    this.setCoordinatesDisplay(this.findGridCellAtPoint(center.x, center.y));
+  }
+
+  applyPinchGesture(rect = this.canvas.getBoundingClientRect()) {
+    if (!this.pinchState) {
+      return;
+    }
+
+    const pointers = this.getActivePinchPointers();
+    if (pointers.length < 2) {
+      this.pinchState = null;
+      return;
+    }
+
+    const center = this.getPointerCenter(pointers[0], pointers[1], rect);
+    const nextZoom = clamp(
+      this.pinchState.zoom * (this.getPointerDistance(pointers[0], pointers[1]) / this.pinchState.distance),
+      0.18,
+      1.65,
+    );
+    this.zoom = nextZoom;
+    this.offsetX = this.pinchState.world.x - center.x / this.zoom;
+    this.offsetY = this.pinchState.world.y - center.y / this.zoom;
+    this.lastPointer = center;
+    this.setCoordinatesDisplay(this.findGridCellAtPoint(center.x, center.y));
+    this.clampOffset();
+    this.render();
+    this.scheduleFetch();
+  }
+
+  getActivePinchPointers() {
+    return [...this.activePointers.values()].slice(0, 2);
+  }
+
+  getPointerCenter(firstPointer, secondPointer, rect) {
+    return {
+      x: (firstPointer.clientX + secondPointer.clientX) * 0.5 - rect.left,
+      y: (firstPointer.clientY + secondPointer.clientY) * 0.5 - rect.top,
+    };
+  }
+
+  getPointerDistance(firstPointer, secondPointer) {
+    return Math.hypot(
+      secondPointer.clientX - firstPointer.clientX,
+      secondPointer.clientY - firstPointer.clientY,
+    );
+  }
+
+  resumeDragFromActivePointer() {
+    const [pointer] = this.activePointers.values();
+    if (!pointer) {
+      this.dragging = false;
+      this.dragMoved = false;
+      this.dragPointerId = null;
+      this.dragLastPoint = null;
+      return;
+    }
+
+    const rect = this.canvas.getBoundingClientRect();
+    this.dragging = true;
+    this.dragMoved = true;
+    this.dragPointerId = pointer.pointerId;
+    this.dragLastPoint = { x: pointer.clientX, y: pointer.clientY };
+    this.lastPointer = {
+      x: pointer.clientX - rect.left,
+      y: pointer.clientY - rect.top,
+    };
+    this.setCoordinatesDisplay(this.findGridCellAtPoint(this.lastPointer.x, this.lastPointer.y));
+  }
+
+  releasePointerCapture(pointerId) {
+    if (!this.canvas.hasPointerCapture?.(pointerId)) {
+      return;
+    }
+
+    try {
+      this.canvas.releasePointerCapture(pointerId);
+    } catch {
+      // Ignore stale pointer capture releases after the browser has already cleaned them up.
+    }
+  }
+
   focusHome() {
-    this.focusCell(this.getHomeCell(), { animate: true });
+    const homeCell = this.getHomeCell();
+    if (!homeCell) {
+      return;
+    }
+
+    this.animateViewTo(homeCell.x, homeCell.y, DEFAULT_MAP_ZOOM);
   }
 
   getHomeCell() {
     return this.homeCellKey ? this.cellCache.get(this.homeCellKey) || null : null;
   }
 
-  focusCell(cell, { animate = true } = {}) {
+  focusCell(cell, { animate = true, resetZoom = false } = {}) {
     if (!cell) {
       return;
     }
@@ -787,12 +1056,33 @@ export class MapRenderer {
     this.onSelectCell(this.getSelectedCell());
 
     if (animate) {
+      if (resetZoom) {
+        this.animateViewTo(cell.x, cell.y, DEFAULT_MAP_ZOOM);
+        return;
+      }
+
       this.animatePanTo(cell.x, cell.y);
       return;
     }
 
+    if (resetZoom) {
+      this.zoom = DEFAULT_MAP_ZOOM;
+    }
     this.centerOnCell(cell.x, cell.y);
     this.render();
+  }
+
+  clearSelection() {
+    const hadSelection = Boolean(this.selectedCellKey);
+    const hadHover = Boolean(this.hoveredCellKey);
+    this.selectedCellKey = null;
+    this.hoveredCellKey = null;
+    this.onHoverCell(null);
+    this.onSelectCell(null);
+
+    if (hadSelection || hadHover) {
+      this.render();
+    }
   }
 
   getSearchablePlayerBases() {
@@ -879,11 +1169,11 @@ export class MapRenderer {
     this.offsetY = clampedOffset.y;
   }
 
-  getClampedOffset(offsetX, offsetY, width, height) {
+  getClampedOffset(offsetX, offsetY, width, height, zoom = this.zoom) {
     const maxWorldX = this.getMapWidth() * MR3.hexWidth + MR3.hexWidth * 0.5;
     const maxWorldY = this.getMapHeight() * MR3.hexOverlap + MR3.hexHeight;
-    const maxOffsetX = Math.max(0, maxWorldX - width / this.zoom);
-    const maxOffsetY = Math.max(0, maxWorldY - height / this.zoom);
+    const maxOffsetX = Math.max(0, maxWorldX - width / zoom);
+    const maxOffsetY = Math.max(0, maxWorldY - height / zoom);
 
     return {
       x: clamp(offsetX, 0, maxOffsetX),

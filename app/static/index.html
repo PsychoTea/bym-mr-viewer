@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    >
     <title>BYM MR Viewer</title>
     <link id="app-favicon" rel="icon" type="image/png">
     <link rel="stylesheet" href="/styles.css">
@@ -110,24 +113,45 @@
             title="Hide sidebar"
             hidden
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg class="sidebar-toggle-icon sidebar-toggle-icon-desktop" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M15.5 4.5 8 12l7.5 7.5-2.1 2.1L3.8 12l9.6-9.6 2.1 2.1Z" />
+            </svg>
+            <svg class="sidebar-toggle-icon sidebar-toggle-icon-mobile" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16v2H4zM4 11h16v2H4zM4 15h16v2H4z" />
+            </svg>
+            <svg class="sidebar-toggle-icon sidebar-toggle-icon-close" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z" />
             </svg>
           </button>
           <div class="map-tool-bar">
             <div class="map-search-panel" aria-label="Map search">
-              <p class="eyebrow">Search</p>
-              <div class="search-shell">
-                <input
-                  id="search-input"
-                  class="search-input"
-                  type="search"
-                  placeholder="Search by username"
-                  autocomplete="off"
-                  spellcheck="false"
-                  disabled
-                >
-                <div id="search-results" class="search-results" hidden></div>
+              <button
+                id="search-toggle-button"
+                class="icon-button map-tool-toggle-button"
+                type="button"
+                aria-label="Open search"
+                aria-expanded="false"
+                title="Search"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm6.86 10.44L21 20.08 19.58 21.5l-3.64-3.64 1.42-1.42Z" />
+                </svg>
+              </button>
+              <div class="map-search-content">
+                <p class="eyebrow">Search</p>
+                <div class="search-shell">
+                  <input
+                    id="search-input"
+                    class="search-input"
+                    type="search"
+                    placeholder="Search by username"
+                    autocomplete="off"
+                    spellcheck="false"
+                    disabled
+                  >
+                  <div id="search-results" class="search-results" hidden></div>
+                </div>
               </div>
             </div>
 
@@ -137,10 +161,14 @@
                 id="filter-toggle-button"
                 class="secondary-button tool-toggle-button"
                 type="button"
+                aria-label="Show filters"
                 aria-expanded="false"
                 disabled
               >
-                Show Filters
+                <svg class="filter-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6h16l-6 7v5l-4 2v-7L4 6Z" />
+                </svg>
+                <span id="filter-toggle-label" class="filter-toggle-label">Show Filters</span>
               </button>
               <div id="filter-menu" class="filter-menu" hidden>
                 <div class="filter-menu-header">
@@ -186,8 +214,34 @@
           <div
             id="map-overlay"
             class="map-overlay"
-            data-message="Sign in to load live MR3 data."
+            data-message="Loading..."
           ></div>
+          <div
+            id="mobile-details-sheet"
+            class="panel mobile-details-sheet"
+            aria-hidden="true"
+          >
+            <div class="mobile-details-sheet-header">
+              <div>
+                <p class="eyebrow">Cell</p>
+                <h2 id="mobile-details-title">No selection</h2>
+              </div>
+              <button
+                id="mobile-details-close-button"
+                class="icon-button mobile-details-close-button"
+                type="button"
+                aria-label="Close cell information"
+                title="Close cell information"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z" />
+                </svg>
+              </button>
+            </div>
+            <div id="mobile-details-content" class="details-content mobile-details-content">
+              Tap a visible MR3 cell to inspect it.
+            </div>
+          </div>
           <div class="map-controls" aria-label="Map controls">
             <button
               id="refresh-button"
