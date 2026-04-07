@@ -698,10 +698,8 @@ export class MapRenderer {
     };
 
     try {
-      const workers = Array.from(
-        { length: Math.max(1, MR3.fullMapConcurrency) },
-        () => runWorker(),
-      );
+      const workerCount = Math.min(totalChunks, Math.max(1, MR3.fullMapConcurrency));
+      const workers = Array.from({ length: workerCount }, () => runWorker());
       await Promise.all(workers);
       this.fullMapLoaded = true;
       this.persistFullMapCache().catch((error) => {

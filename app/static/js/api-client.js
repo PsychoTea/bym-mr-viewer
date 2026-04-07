@@ -13,7 +13,7 @@ export class ApiClient {
   constructor(config = getViewerConfig()) {
     this.config = config;
     this.mapCellsRequestGate = Promise.resolve();
-    this.mapCellsNextRequestAt = 0;
+    this.mapCellsRequestTimestamps = [];
   }
 
   async getConfig() {
@@ -161,13 +161,25 @@ export class ApiClient {
     await previousGate;
 
     try {
-      const requestSpacingMs = Math.ceil(60_000 / MR3.fullMapRequestsPerMinute) + 50;
-      const waitMs = Math.max(0, this.mapCellsNextRequestAt - Date.now());
-      if (waitMs > 0) {
+      const maxRequests = Math.max(1, Number(MR3.fullMapRequestsPerMinute) || 1);
+      const windowMs = Math.max(1, Number(MR3.fullMapRequestWindowMs) || 60_000);
+
+      while (true) {
+        const now = Date.now();
+        const cutoff = now - windowMs;
+        this.mapCellsRequestTimestamps = this.mapCellsRequestTimestamps.filter(
+          (startedAt) => startedAt > cutoff,
+        );
+
+        if (this.mapCellsRequestTimestamps.length < maxRequests) {
+          this.mapCellsRequestTimestamps.push(now);
+          return;
+        }
+
+        const oldestStartedAt = this.mapCellsRequestTimestamps[0];
+        const waitMs = Math.max(0, oldestStartedAt + windowMs - now + 5);
         await new Promise((resolve) => globalThis.setTimeout(resolve, waitMs));
       }
-
-      this.mapCellsNextRequestAt = Date.now() + requestSpacingMs;
     } finally {
       releaseGate();
     }
