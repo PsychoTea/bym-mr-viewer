@@ -931,6 +931,11 @@ h2 {
   color: var(--muted);
 }
 
+.details-panel {
+  overflow: hidden;
+  transition: height 180ms ease;
+}
+
 .mobile-details-sheet-header {
   display: flex;
   align-items: flex-start;

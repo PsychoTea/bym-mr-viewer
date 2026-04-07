@@ -25,6 +25,7 @@ import {
 const MAP_REFRESH_COOLDOWN_MS = 60_000;
 const MOBILE_LAYOUT_MEDIA_QUERY = "(max-width: 900px)";
 const FILTER_MENU_TRANSITION_MS = 180;
+const DESKTOP_DETAILS_RESIZE_TRANSITION_MS = 180;
 const MOBILE_DETAILS_RESIZE_TRANSITION_MS = 220;
 const INITIAL_OVERLAY_MESSAGE = "Loading...";
 const SIGNED_OUT_OVERLAY_MESSAGE = "Please log in.";
@@ -38,6 +39,7 @@ export class ViewerApp {
     this.session = null;
     this.worlds = [];
     this.leaderboardCache = new Map();
+    this.leaderboardRequests = new Map();
     this.selectedWorldId = null;
     this.hoveredCell = null;
     this.selectedCell = null;
@@ -61,6 +63,8 @@ export class ViewerApp {
     this.mobileSearchOpen = false;
     this.mobileLayoutMediaQuery = window.matchMedia(MOBILE_LAYOUT_MEDIA_QUERY);
     this.filterMenuCloseTimer = 0;
+    this.desktopDetailsResizeFrame = 0;
+    this.desktopDetailsResizeTimer = 0;
     this.mobileDetailsResizeFrame = 0;
     this.mobileDetailsResizeTimer = 0;
     this.serverSelection = null;
@@ -84,6 +88,7 @@ export class ViewerApp {
       worldList: document.getElementById("world-list"),
       leaderboardTitle: document.getElementById("leaderboard-title"),
       leaderboardList: document.getElementById("leaderboard-list"),
+      detailsPanel: document.querySelector(".details-panel"),
       detailsTitle: document.getElementById("details-title"),
       detailsContent: document.getElementById("details-content"),
       mobileDetailsSheet: document.getElementById("mobile-details-sheet"),
@@ -304,6 +309,7 @@ export class ViewerApp {
     this.session = null;
     this.worlds = [];
     this.leaderboardCache = new Map();
+    this.leaderboardRequests = new Map();
     this.selectedWorldId = null;
     this.hoveredCell = null;
     this.selectedCell = null;
@@ -495,6 +501,9 @@ export class ViewerApp {
     this.renderWorldList();
     if (this.selectedWorldId) {
       await this.loadLeaderboard(this.selectedWorldId);
+      this.prefetchLeaderboards(this.worlds
+        .map((world) => world.uuid)
+        .filter((worldId) => worldId && worldId !== this.selectedWorldId));
     }
   }
 
@@ -572,10 +581,34 @@ export class ViewerApp {
       return this.leaderboardCache.get(worldId);
     }
 
-    const response = await this.api.getLeaderboard(worldId, 3);
-    const rows = response.leaderboard || [];
-    this.leaderboardCache.set(worldId, rows);
-    return rows;
+    if (this.leaderboardRequests.has(worldId)) {
+      return this.leaderboardRequests.get(worldId);
+    }
+
+    const request = this.api.getLeaderboard(worldId, 3)
+      .then((response) => {
+        const rows = response.leaderboard || [];
+        this.leaderboardCache.set(worldId, rows);
+        return rows;
+      })
+      .finally(() => {
+        this.leaderboardRequests.delete(worldId);
+      });
+
+    this.leaderboardRequests.set(worldId, request);
+    return request;
+  }
+
+  prefetchLeaderboards(worldIds) {
+    if (!Array.isArray(worldIds) || !worldIds.length) {
+      return;
+    }
+
+    Promise.allSettled(
+      worldIds.map((worldId) => this.getLeaderboardRows(worldId)),
+    ).catch((error) => {
+      console.warn("Failed to prefetch one or more leaderboards.", error);
+    });
   }
 
   handleHoveredCell(cell) {
@@ -591,6 +624,10 @@ export class ViewerApp {
   }
 
   renderDetails() {
+    const shouldAnimateDesktopResize = !this.isMobileLayout && Boolean(this.elements.detailsPanel);
+    const previousDesktopDetailsHeight = shouldAnimateDesktopResize
+      ? this.elements.detailsPanel.getBoundingClientRect().height
+      : 0;
     const shouldAnimateMobileResize = (
       this.isMobileLayout &&
       Boolean(this.selectedCell) &&
@@ -604,7 +641,7 @@ export class ViewerApp {
       titleEl: this.elements.detailsTitle,
       contentEl: this.elements.detailsContent,
       cell: this.selectedCell || this.hoveredCell || null,
-      emptyMessage: "Hover a visible MR3 cell to inspect it.",
+      emptyMessage: "Hover or select a visible MR3 cell to inspect it.",
     });
     this.renderDetailsPanel({
       titleEl: this.elements.mobileDetailsTitle,
@@ -612,6 +649,7 @@ export class ViewerApp {
       cell: this.selectedCell || null,
       emptyMessage: "Tap a visible MR3 cell to inspect it.",
     });
+    this.animateDesktopDetailsResize(previousDesktopDetailsHeight, shouldAnimateDesktopResize);
     this.syncMobileDetailsState();
     this.animateMobileDetailsResize(previousMobileDetailsHeight, shouldAnimateMobileResize);
   }
@@ -1263,6 +1301,10 @@ export class ViewerApp {
     this.syncSearchToggleButtonState();
     this.syncFilterButtonState();
     this.syncMobileDetailsState();
+    this.cancelDesktopDetailsResizeAnimation();
+    if (this.elements.detailsPanel) {
+      this.elements.detailsPanel.style.height = "";
+    }
     this.renderer?.render();
   }
 
@@ -1336,6 +1378,52 @@ export class ViewerApp {
     if (!isOpen) {
       this.cancelMobileDetailsResizeAnimation();
       this.elements.mobileDetailsSheet.style.height = "";
+    }
+  }
+
+  animateDesktopDetailsResize(previousHeight, shouldAnimate) {
+    const panel = this.elements.detailsPanel;
+    if (!panel) {
+      return;
+    }
+
+    this.cancelDesktopDetailsResizeAnimation();
+
+    if (!shouldAnimate || this.isMobileLayout) {
+      panel.style.height = "";
+      return;
+    }
+
+    const nextHeight = panel.getBoundingClientRect().height;
+    if (!previousHeight || Math.abs(nextHeight - previousHeight) < 1) {
+      panel.style.height = "";
+      return;
+    }
+
+    panel.style.height = `${previousHeight}px`;
+    void panel.offsetHeight;
+
+    this.desktopDetailsResizeFrame = window.requestAnimationFrame(() => {
+      this.desktopDetailsResizeFrame = 0;
+      panel.style.height = `${nextHeight}px`;
+      this.desktopDetailsResizeTimer = window.setTimeout(() => {
+        this.desktopDetailsResizeTimer = 0;
+        if (!this.isMobileLayout) {
+          panel.style.height = "";
+        }
+      }, DESKTOP_DETAILS_RESIZE_TRANSITION_MS);
+    });
+  }
+
+  cancelDesktopDetailsResizeAnimation() {
+    if (this.desktopDetailsResizeFrame) {
+      window.cancelAnimationFrame(this.desktopDetailsResizeFrame);
+      this.desktopDetailsResizeFrame = 0;
+    }
+
+    if (this.desktopDetailsResizeTimer) {
+      window.clearTimeout(this.desktopDetailsResizeTimer);
+      this.desktopDetailsResizeTimer = 0;
     }
   }
 
