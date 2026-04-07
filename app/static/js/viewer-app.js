@@ -109,6 +109,7 @@ export class ViewerApp {
       filterTribeOptions: document.getElementById("filter-tribe-options"),
       filterLevelOptions: document.getElementById("filter-level-options"),
       refreshButton: document.getElementById("refresh-button"),
+      refreshButtonCooldown: document.getElementById("refresh-button-cooldown"),
       findHomeButton: document.getElementById("find-home-button"),
       zoomInButton: document.getElementById("zoom-in-button"),
       zoomOutButton: document.getElementById("zoom-out-button"),
@@ -1181,13 +1182,16 @@ export class ViewerApp {
 
   updateRefreshButtonState() {
     const button = this.elements.refreshButton;
+    const cooldownBadge = this.elements.refreshButtonCooldown;
     const hasSession = Boolean(this.session);
     const cooldownSeconds = Math.max(0, Math.ceil((this.refreshCooldownUntil - Date.now()) / 1000));
     const isCoolingDown = cooldownSeconds > 0;
 
     button.disabled = !hasSession || this.refreshInFlight || isCoolingDown;
+    button.classList.toggle("cooling-down", isCoolingDown);
     button.classList.toggle("loading", this.refreshInFlight);
-    button.dataset.cooldown = isCoolingDown ? String(cooldownSeconds) : "";
+    cooldownBadge.hidden = !isCoolingDown;
+    cooldownBadge.textContent = isCoolingDown ? String(cooldownSeconds) : "";
 
     if (!hasSession) {
       button.title = "Sign in to refresh the world map";
