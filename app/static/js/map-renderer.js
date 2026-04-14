@@ -29,6 +29,15 @@ const WHEEL_ZOOM_MULTIPLIER = 1.14;
 const LABEL_RENDER_ZOOM_MIN = 0.55;
 const DEFAULT_MAP_ZOOM = 1;
 
+function normalizeOptionalNumber(value) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+
+  const normalized = Number(value);
+  return Number.isNaN(normalized) ? null : normalized;
+}
+
 export class MapRenderer {
   constructor({ canvas, overlayEl, coordsEl, statusEl, assets, api, onHoverCell, onSelectCell }) {
     this.canvas = canvas;
@@ -427,7 +436,7 @@ export class MapRenderer {
         return null;
     }
 
-    const tribe = getTribeKey(cell);
+    const tribe = Number(cell.uid || 0) === 0 ? getTribeKey(cell) : null;
     const level = Number(cell.l || 0);
     return { type, tribe, level };
   }
@@ -645,7 +654,7 @@ export class MapRenderer {
         r: Number(rawCell.r || 0),
         dm: Number(rawCell.dm || 0),
         rel: rawCell.rel !== undefined ? Number(rawCell.rel) : MR3.relationships.none,
-        tid: Number(rawCell.tid || 0),
+        tid: normalizeOptionalNumber(rawCell.tid),
         lo: Number(rawCell.lo || 0),
         p: Number(rawCell.p || 0),
         d: Number(rawCell.d || 0),

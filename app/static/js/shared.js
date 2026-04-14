@@ -3,7 +3,7 @@ export const SESSION_CACHE_DB_NAME = "bym-mr-viewer-session-cache";
 export const SERVER_SELECTION_STORAGE_KEY = "bym-mr-viewer-server-selection";
 export const SESSION_CACHE_STORE_NAME = "entries";
 export const SESSION_CACHE_SESSION_KEY = "bym-mr-viewer-session-id";
-export const FULL_MAP_CACHE_VERSION = 1;
+export const FULL_MAP_CACHE_VERSION = 2;
 export const FULL_MAP_CACHE_KEY_PREFIX = "bym-mr-viewer-full-map";
 export const SEARCH_RESULT_LIMIT = 100;
 export const DEFAULT_VIEWER_CONFIG = Object.freeze({
@@ -431,12 +431,19 @@ export function hasActiveBaseFilterState(filter) {
 }
 
 export function getTribeKey(cell) {
-  const tribeId = Number(cell?.tid);
+  const rawTribeId = cell?.tid;
+  if (rawTribeId === undefined || rawTribeId === null || String(rawTribeId).trim() === "") {
+    return null;
+  }
+
+  const tribeId = Number(rawTribeId);
   if (Number.isNaN(tribeId)) {
     return null;
   }
 
-  return TRIBE_KEY_BY_ID[tribeId] || null;
+  return Object.prototype.hasOwnProperty.call(TRIBE_KEY_BY_ID, tribeId)
+    ? TRIBE_KEY_BY_ID[tribeId]
+    : null;
 }
 
 export function describeTribe(cell) {
