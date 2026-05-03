@@ -9,7 +9,7 @@ export const SEARCH_RESULT_LIMIT = 100;
 export const DEFAULT_VIEWER_CONFIG = Object.freeze({
   bymBaseUrl: "http://localhost:3001",
   cdnBaseUrl: "http://localhost:3001",
-  apiVersion: "v1.5.4-beta",
+  apiVersion: "v1.6.2-beta",
 });
 export const STABLE_VIEWER_CONFIG = Object.freeze({
   bymBaseUrl: "https://server.bymrefitted.com",
