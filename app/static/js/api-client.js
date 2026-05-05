@@ -186,7 +186,7 @@ export class ApiClient {
   }
 
   extractApiVersion(message) {
-    const match = String(message || "").match(/Expected:\s*([^,\s]+)/i);
+    const match = String(message || "").match(/Expected(?:\s+one\s+of)?:\s*([^,\s]+)/i);
     return match ? normalizeApiVersion(match[1]) : null;
   }
 }
